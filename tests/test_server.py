@@ -194,3 +194,53 @@ def test_poll_events_mention_hidden_from_non_participants():
     _emit("alice-1234→bob-5678: @Bob secret task")
     result = _dispatch({"action": "poll_events", "agent_id": "charlie-9999"})
     assert result["events"] == []
+
+
+def test_get_conversation_since():
+    _conversations.clear()
+    _agents["alice-1234"] = {
+        "name": "Alice", "role": "implementer", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01"
+    }
+    result = _dispatch({
+        "action": "create_conversation",
+        "channel_id": "test-channel",
+        "name": "Chat",
+        "participants": [],
+    })
+    conv_id = result["conversation_id"]
+    for i in range(5):
+        _dispatch({
+            "action": "post_to_conversation",
+            "conversation_id": conv_id,
+            "from_agent": "alice-1234",
+            "content": f"msg {i}",
+        })
+    conv = _dispatch({"action": "get_conversation", "conversation_id": conv_id, "since": 3})
+    assert len(conv["messages"]) == 2
+    assert conv["messages"][0]["content"] == "msg 3"
+    assert conv["messages"][1]["content"] == "msg 4"
+
+
+def test_get_conversation_since_zero_returns_all():
+    _conversations.clear()
+    _agents["alice-1234"] = {
+        "name": "Alice", "role": "implementer", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01"
+    }
+    result = _dispatch({
+        "action": "create_conversation",
+        "channel_id": "test-channel",
+        "name": "Chat2",
+        "participants": [],
+    })
+    conv_id = result["conversation_id"]
+    for i in range(3):
+        _dispatch({
+            "action": "post_to_conversation",
+            "conversation_id": conv_id,
+            "from_agent": "alice-1234",
+            "content": f"msg {i}",
+        })
+    conv = _dispatch({"action": "get_conversation", "conversation_id": conv_id, "since": 0})
+    assert len(conv["messages"]) == 3

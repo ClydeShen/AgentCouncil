@@ -151,7 +151,12 @@ def _dispatch(data: dict) -> dict | list:
 
         case "get_conversation":
             conv = _conversations.get(data["conversation_id"])
-            return conv if conv else {"ok": False, "error": "Conversation not found"}
+            if not conv:
+                return {"ok": False, "error": "Conversation not found"}
+            since = data.get("since", 0)
+            result = dict(conv)
+            result["messages"] = conv["messages"][since:]
+            return result
 
         case "poll_events":
             agent_id = data["agent_id"]
