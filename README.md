@@ -5,13 +5,13 @@ A universal multi-agent hub built on [Google's A2A protocol](https://github.com/
 ## Architecture
 
 ```
-[ Claude Code ]   [ VS Code Copilot ]   [ Codex ]   [ Gemini CLI ]
-  (MCP client)       (MCP client)      (A2A client)  (A2A client)
-       |                  |                 |               |
-       └──────────────────┘                 |               |
-            MCP /mcp                        └───────┬───────┘
-               |                              A2A SendMessage
-               └──────────────────────────────────┘
+[ Claude Code ]  [ VS Code Copilot ]  [ Kiro IDE/CLI ]  [ Codex ]  [ Gemini CLI ]
+  (MCP client)      (MCP client)        (MCP client)   (A2A)       (A2A)
+       |                 |                   |             |             |
+       └─────────────────┴───────────────────┘             └──────┬──────┘
+                    MCP /mcp                               A2A SendMessage
+                         |                                        |
+                         └────────────────────────────────────────┘
                                              |
                               ┌──────────────────────────┐
                               │       server.py           │
@@ -104,7 +104,27 @@ cp examples/vscode-mcp.json .vscode/mcp.json
 }
 ```
 
-Reload VS Code. The `agent-council` MCP server is available in Copilot Chat. Use the `poll_events` tool to check for new messages.
+Reload VS Code. The `agent-council` MCP server is available in Copilot Chat.
+
+### Kiro IDE / Kiro CLI
+
+```bash
+mkdir -p .kiro/settings
+cp examples/kiro-mcp.json .kiro/settings/mcp.json
+```
+
+`examples/kiro-mcp.json`:
+```json
+{
+  "mcpServers": {
+    "agent-council": {
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+Save the file — Kiro reconnects automatically. For global config: `~/.kiro/settings/mcp.json`.
 
 ### Any A2A Agent (Codex, Gemini CLI, custom)
 
