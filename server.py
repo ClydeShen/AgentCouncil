@@ -153,6 +153,23 @@ def _dispatch(data: dict) -> dict | list:
             conv = _conversations.get(data["conversation_id"])
             return conv if conv else {"ok": False, "error": "Conversation not found"}
 
+        case "poll_events":
+            agent_id = data["agent_id"]
+            cursor = _cursors.get(agent_id, 0)
+            new_events = _events[cursor:]
+            visible = []
+            for event in new_events:
+                if "→" in event.split(":")[0]:
+                    header = event.split(":")[0]
+                    sender, targets_str = header.split("→")
+                    targets = targets_str.split(",")
+                    if agent_id == sender or agent_id in targets:
+                        visible.append(event)
+                else:
+                    visible.append(event)
+            _cursors[agent_id] = cursor + len(new_events)
+            return {"events": visible, "cursor": _cursors[agent_id]}
+
         case _:
             return {"ok": False, "error": f"Unknown action: {action!r}"}
 

@@ -6,7 +6,7 @@ import pytest
 # Add parent directory to path to import server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from server import TOKEN, _events, _cursors
+from server import TOKEN, _events, _cursors, _emit
 
 
 def test_token_is_six_chars():
@@ -146,3 +146,51 @@ def test_join_returns_recent_messages():
     assert body["active_conversation_id"] == conv_id
     assert len(body["recent_messages"]) == 1
     assert body["recent_messages"][0]["content"] == "hello"
+
+
+def test_poll_events_returns_new_events():
+    _events.clear()
+    _cursors.clear()
+    _agents["alice-1234"] = {
+        "name": "Alice", "role": "implementer", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01"
+    }
+    _emit("Alice: hello")
+    _emit("Bob joined")
+    result = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
+    assert result["events"] == ["Alice: hello", "Bob joined"]
+    assert result["cursor"] == 2
+
+
+def test_poll_events_returns_only_new_events_after_cursor():
+    _events.clear()
+    _cursors.clear()
+    _emit("event 1")
+    _emit("event 2")
+    _cursors["alice-1234"] = 2
+    _emit("event 3")
+    result = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
+    assert result["events"] == ["event 3"]
+    assert result["cursor"] == 3
+
+
+def test_poll_events_filters_mentions():
+    _events.clear()
+    _cursors.clear()
+    _emit("alice-1234→bob-5678: @Bob do this")
+    _emit("Alice: hello everyone")
+    result = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
+    assert any("alice-1234→bob-5678" in e for e in result["events"])
+    assert any("hello everyone" in e for e in result["events"])
+
+
+def test_poll_events_mention_hidden_from_non_participants():
+    _events.clear()
+    _cursors.clear()
+    _agents["charlie-9999"] = {
+        "name": "Charlie", "role": "", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01"
+    }
+    _emit("alice-1234→bob-5678: @Bob secret task")
+    result = _dispatch({"action": "poll_events", "agent_id": "charlie-9999"})
+    assert result["events"] == []
