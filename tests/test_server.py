@@ -244,3 +244,9 @@ def test_get_conversation_since_zero_returns_all():
         })
     conv = _dispatch({"action": "get_conversation", "conversation_id": conv_id, "since": 0})
     assert len(conv["messages"]) == 3
+
+
+def test_mcp_endpoint_exists():
+    with TestClient(app) as client:
+        resp = client.get("/mcp")
+        assert resp.status_code in (200, 405, 307, 406)

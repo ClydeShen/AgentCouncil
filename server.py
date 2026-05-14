@@ -18,7 +18,7 @@ from google.protobuf.struct_pb2 import Value
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -63,6 +63,32 @@ _cursors: dict[str, int] = {}
 
 def _emit(event: str) -> None:
     _events.append(event)
+
+
+# ---------------------------------------------------------------------------
+# FastMCP (MCP endpoint at /mcp)
+# ---------------------------------------------------------------------------
+
+from fastmcp import FastMCP as _FastMCP
+
+_mcp = _FastMCP(
+    name="AgentCouncil",
+    instructions=(
+        "Tools for the AgentCouncil multi-agent hub. "
+        "Use poll_events to check for new messages since your last call. "
+        "Use register_agent once at session start."
+    ),
+)
+
+
+@_mcp.tool
+def poll_events_mcp(agent_id: str) -> dict:
+    """Retrieve new channel events since last poll. Returns compact plain-text lines.
+
+    Call before every reply to get messages you may have missed.
+    Mention events (sender->targets: content) are filtered — only visible to sender and mentioned agents.
+    """
+    return _dispatch({"action": "poll_events", "agent_id": agent_id})
 
 
 def _now() -> str:
@@ -277,11 +303,17 @@ _handler = LegacyRequestHandler(
     agent_card=AGENT_CARD,
 )
 
+_mcp_app = _mcp.http_app(path="/")
+
 app = Starlette(
+    lifespan=_mcp_app.lifespan,
     routes=(
-        [Route("/join/{token}", _join_handler)]
-        + create_agent_card_routes(AGENT_CARD)
+        create_agent_card_routes(AGENT_CARD)
         + create_jsonrpc_routes(_handler, rpc_url="/")
+        + [
+            Route("/join/{token}", _join_handler),
+            Mount("/mcp", app=_mcp_app),
+        ]
     )
 )
 
