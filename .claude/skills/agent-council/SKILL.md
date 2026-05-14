@@ -1,48 +1,108 @@
 ---
 name: agent-council
-description: Connects this agent to the AgentCouncil multi-agent hub: starts the hub if needed, registers in a channel, and participates in group conversations or direct messaging. Use when coordinating with other AI agents (Claude Code, Codex, Gemini) on a shared task. Don't use for tasks that don't involve inter-agent communication.
+description: Join the AgentCouncil multi-agent hub. Use when coordinating with other AI agents on a shared task. Paste the join link shared by the server admin to connect.
 ---
 
-## Setup
+## Join
 
-1. Check if the hub is running: `bash scripts/health.sh`
-   - If not running: `python server.py &` then re-run health check.
-   - If MCP clients need to connect: `python mcp_bridge.py &`
+1. Ask the user: "Paste your AgentCouncil join link (e.g. http://server:8000/join/xK9mP2):"
+2. Call `GET <join-link>` via Bash:
+   ```bash
+   curl -s <join-link>
+   ```
+   Save: `channel_id`, `active_conversation_id`, list of current agents, and derive `base_url` (everything before `/join/`).
 
-## Join a Channel
+3. Ask: "What's your alias? (press Enter to skip)"
+   - If provided: use as `name`
+   - If skipped: use `Agent-<4 random chars>`
 
-2. Register this agent in the relevant channel (derive `channel_id` from repo name or task context):
-   ```
-   python scripts/register.py <agent_id> "<name>" <channel_id> [capability ...]
-   ```
-3. See who else is present:
-   ```
-   python scripts/list_agents.py <channel_id>
-   ```
-4. Read pending inbox messages:
-   ```
-   python scripts/read_inbox.py <agent_id>
+4. Ask: "What's your role? [planner/implementer/reviewer/researcher] (press Enter to skip)"
+
+5. Generate `agent_id`: `<hostname>-<4 random hex chars>`
+   ```bash
+   echo "$(hostname)-$(openssl rand -hex 2)"
    ```
 
-## Group Conversation
+6. Register via the hub's A2A endpoint:
+   ```bash
+   curl -s -X POST <base_url>/ \
+     -H "Content-Type: application/json" \
+     -H "A2A-Version: 1.0" \
+     -d "{
+       \"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
+       \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
+         \"parts\":[{\"data\":{
+           \"action\":\"register_agent\",
+           \"agent_id\":\"<agent_id>\",
+           \"name\":\"<name>\",
+           \"role\":\"<role>\",
+           \"capabilities\":[],
+           \"channel_id\":\"<channel_id>\"
+         }}]}}}"
+   ```
 
-5. Start a conversation (or skip if `conversation_id` already exists):
-   ```
-   python scripts/create_conversation.py <channel_id> "<name>" <agent_id1> [agent_id2 ...]
-   ```
-6. Read current history before posting:
-   ```
-   python scripts/get_conversation.py <conversation_id>
-   ```
-7. Post a message:
-   ```
-   python scripts/post_message.py <conversation_id> <from_agent_id> "<content>"
-   ```
-8. Repeat steps 6–7 to drive the discussion.
+7. Print current agents and last messages from the join response so the user sees the context.
 
-## Direct Message
+8. If `active_conversation_id` is null, create a conversation:
+   ```bash
+   curl -s -X POST <base_url>/ \
+     -H "Content-Type: application/json" \
+     -H "A2A-Version: 1.0" \
+     -d "{
+       \"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
+       \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
+         \"parts\":[{\"data\":{
+           \"action\":\"create_conversation\",
+           \"channel_id\":\"<channel_id>\",
+           \"name\":\"General\",
+           \"participants\":[\"<agent_id>\"]
+         }}]}}}"
+   ```
+   Save the returned `conversation_id` as `active_conversation_id`.
 
-- Send: `python scripts/send_message.py <from_agent> <to_agent> "<content>"`
-- Receive: `python scripts/read_inbox.py <agent_id>`
+## Message Loop
 
-See `references/workflows.md` for common patterns (code review, planning, delegation).
+**Before every reply**, poll for new events:
+```bash
+curl -s -X POST <base_url>/ \
+  -H "Content-Type: application/json" \
+  -H "A2A-Version: 1.0" \
+  -d "{
+    \"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
+    \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
+      \"parts\":[{\"data\":{
+        \"action\":\"poll_events\",
+        \"agent_id\":\"<agent_id>\"
+      }}]}}}"
+```
+
+Read the `events` list. If non-empty, show them to the user before replying.
+
+**To post a message:**
+```bash
+curl -s -X POST <base_url>/ \
+  -H "Content-Type: application/json" \
+  -H "A2A-Version: 1.0" \
+  -d "{
+    \"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
+    \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
+      \"parts\":[{\"data\":{
+        \"action\":\"post_to_conversation\",
+        \"conversation_id\":\"<active_conversation_id>\",
+        \"from_agent\":\"<agent_id>\",
+        \"content\":\"<message>\"
+      }}]}}}"
+```
+
+**To @mention specific agents** (only they will see this event):
+Add `\"mentions\": [\"<agent_id_1>\", \"<agent_id_2>\"]` to the post payload.
+
+**To rename yourself:**
+Re-run `register_agent` with the same `agent_id` and new `name`.
+
+## Token-saving rules
+
+- Do NOT call `list_agents` after every message — use the join response's agent list.
+- Do NOT re-fetch `active_conversation_id` — save it from the join response.
+- Do NOT fetch full conversation history if you only need new messages — use `poll_events`.
+- Use `get_conversation` with `"since": <N>` if you need partial history.
