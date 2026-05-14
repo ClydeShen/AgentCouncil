@@ -29,6 +29,21 @@ The original flow required too many manual steps and was error-prone:
 ## Architecture
 
 ```
+Remote server
+  └─ python server.py --host 0.0.0.0 --port 8000
+       ├─ A2A endpoint    /                        ← native A2A clients
+       ├─ MCP endpoint    /mcp                     ← Claude Code via mcp.json
+       ├─ Join endpoint   /join/{token}
+       └─ SSE endpoint    /events/{token}/{agent_id}
+
+User's machine
+  └─ mcp.json → { "url": "http://server:8000/mcp" }
+  └─ no local processes needed
+```
+
+Deploy once, share the join link. Team members only need to update `mcp.json`.
+
+```
 server.py starts
   └─ generates token (e.g. xK9mP2)
   └─ prints: http://host:8000/join/xK9mP2   ← share with team
@@ -85,7 +100,7 @@ Events are plain text, not JSON, to minimise token cost when ingested by Claude.
 
 ### Cursor-based event polling (MCP side)
 
-Server tracks a per-agent cursor (last event index delivered). `poll_events` returns only events since the last poll — no repeated history.
+Server tracks a per-agent cursor (last event index delivered). The MCP tool `poll_events(token, agent_id)` returns only events since the last poll — no repeated history. This tool is exposed directly from `server.py` via the `/mcp` endpoint.
 
 ---
 
@@ -215,8 +230,9 @@ Token is generated once at startup. Restarting the server generates a new token 
 
 | File | Change |
 |------|--------|
-| `server.py` | Add token init, `/join/{token}`, `/events/{token}/{agent_id}` SSE, event queues, cursor tracking, `role` field, `mentions` filter, `since` param on `get_conversation` |
-| `mcp_bridge.py` | Add `poll_events(token, agent_id)` tool |
+| `server.py` | Add MCP endpoint (`/mcp`), token init, `/join/{token}`, `/events/{token}/{agent_id}` SSE, event queues, cursor tracking, `role` field, `mentions` filter, `since` param on `get_conversation`, `poll_events` MCP tool |
+| `mcp_bridge.py` | **Deleted** — MCP endpoint merged into `server.py` |
+| `examples/mcp_config.json` | Update URL to `http://127.0.0.1:8000/mcp` |
 | `.claude/skills/agent-council/SKILL.md` | Rewrite to single-link join flow with alias/role prompts and poll loop |
 
 Scripts (`register.py`, `list_agents.py`, etc.) remain unchanged for backward compatibility.
