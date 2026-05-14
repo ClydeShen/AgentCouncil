@@ -75,18 +75,98 @@ _mcp = _FastMCP(
     name="AgentCouncil",
     instructions=(
         "Tools for the AgentCouncil multi-agent hub. "
-        "Use poll_events to check for new messages since your last call. "
-        "Use register_agent once at session start."
+        "Start with join_channel to get context, then register_agent to announce yourself. "
+        "Call poll_events before every reply to receive new messages. "
+        "Use post_to_conversation to send messages to the group."
     ),
 )
 
 
 @_mcp.tool
-def poll_events_mcp(agent_id: str) -> dict:
-    """Retrieve new channel events since last poll. Returns compact plain-text lines.
+def join_channel(token: str) -> dict:
+    """Get full channel context from a join link token (the part after /join/).
 
-    Call before every reply to get messages you may have missed.
-    Mention events (sender->targets: content) are filtered — only visible to sender and mentioned agents.
+    Returns channel_id, active_conversation_id, current agents, and recent messages.
+    Call this once at session start before registering.
+    """
+    channel_id = f"{TOKEN}-general"
+    if token != TOKEN:
+        return {"ok": False, "error": "Invalid token"}
+    agents = [
+        {"agent_id": aid, "name": info["name"], "role": info.get("role", ""), "capabilities": info["capabilities"]}
+        for aid, info in _agents.items()
+        if info["channel_id"] == channel_id
+    ]
+    active_conv_id = None
+    recent_messages = []
+    for conv_id, conv in _conversations.items():
+        if conv["channel_id"] == channel_id:
+            active_conv_id = conv_id
+            recent_messages = conv["messages"][-10:]
+    return {"channel_id": channel_id, "token": TOKEN, "agents": agents,
+            "active_conversation_id": active_conv_id, "recent_messages": recent_messages}
+
+
+@_mcp.tool
+def register_agent(agent_id: str, name: str, channel_id: str, role: str = "", capabilities: list[str] = []) -> dict:
+    """Register this agent in a channel. Call once at session start after join_channel.
+
+    role: planner | implementer | reviewer | researcher (optional)
+    agent_id: unique ID, e.g. "kiro-abc1" — use hostname + random suffix
+    """
+    return _dispatch({"action": "register_agent", "agent_id": agent_id, "name": name,
+                      "channel_id": channel_id, "role": role, "capabilities": capabilities})
+
+
+@_mcp.tool
+def list_agents(channel_id: str) -> list:
+    """List all agents currently registered in a channel."""
+    return _dispatch({"action": "list_agents", "channel_id": channel_id})
+
+
+@_mcp.tool
+def create_conversation(channel_id: str, name: str, participants: list[str]) -> dict:
+    """Create a new group conversation in a channel. Returns conversation_id."""
+    return _dispatch({"action": "create_conversation", "channel_id": channel_id,
+                      "name": name, "participants": participants})
+
+
+@_mcp.tool
+def post_to_conversation(conversation_id: str, from_agent: str, content: str, mentions: list[str] = []) -> dict:
+    """Post a message to a group conversation.
+
+    mentions: list of agent_ids to notify privately (optional — omit for broadcast).
+    Call poll_events first to read any new messages before replying.
+    """
+    return _dispatch({"action": "post_to_conversation", "conversation_id": conversation_id,
+                      "from_agent": from_agent, "content": content, "mentions": mentions})
+
+
+@_mcp.tool
+def get_conversation(conversation_id: str, since: int = 0) -> dict:
+    """Read conversation history. Use since=N to fetch only messages after index N."""
+    return _dispatch({"action": "get_conversation", "conversation_id": conversation_id, "since": since})
+
+
+@_mcp.tool
+def send_direct_message(from_agent: str, to_agent: str, content: str) -> dict:
+    """Send a private direct message to another agent's inbox."""
+    return _dispatch({"action": "send_message", "from_agent": from_agent,
+                      "to_agent": to_agent, "content": content})
+
+
+@_mcp.tool
+def read_inbox(agent_id: str) -> list:
+    """Read and clear all pending direct messages for this agent."""
+    return _dispatch({"action": "read_inbox", "agent_id": agent_id})
+
+
+@_mcp.tool
+def poll_events(agent_id: str) -> dict:
+    """Retrieve new channel events since last poll. Call before every reply.
+
+    Returns compact plain-text lines. Mention events are filtered —
+    only visible to sender and mentioned agents.
     """
     return _dispatch({"action": "poll_events", "agent_id": agent_id})
 
