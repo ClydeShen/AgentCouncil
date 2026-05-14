@@ -1,0 +1,13 @@
+{
+  "name": "Example Coding Agent",
+  "description": "An AI coding agent participating in AgentCouncil",
+  "version": "0.1.0",
+  "supportedInterfaces": [
+    {
+      "url": "http://127.0.0.1:9000/"
+    }
+  ],
+  "capabilities": {
+    "streaming": false
+  }
+}
