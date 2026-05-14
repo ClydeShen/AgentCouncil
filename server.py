@@ -8,12 +8,17 @@ Run:
     python server.py --host 0.0.0.0 --port 8000
 """
 
+import random
+import string
 import uuid
 from datetime import datetime, UTC
 
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Value
 from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -43,6 +48,48 @@ _inboxes: dict[str, list] = {}
 _conversations: dict[str, dict] = {}
 # conv_id -> {name, channel_id, participants, messages, created_at}
 
+# ---------------------------------------------------------------------------
+# Token + event store
+# ---------------------------------------------------------------------------
+
+TOKEN: str = "".join(random.choices(string.ascii_letters + string.digits, k=6))
+
+_events: list[str] = []
+# plain-text event log: "alice: message", "bob joined as reviewer", etc.
+
+_cursors: dict[str, int] = {}
+# agent_id -> last event index delivered via poll_events
+
+
+def _emit(event: str) -> None:
+    _events.append(event)
+
+
+# ---------------------------------------------------------------------------
+# FastMCP (MCP endpoint at /mcp)
+# ---------------------------------------------------------------------------
+
+from fastmcp import FastMCP as _FastMCP
+
+_mcp = _FastMCP(
+    name="AgentCouncil",
+    instructions=(
+        "Tools for the AgentCouncil multi-agent hub. "
+        "Use poll_events to check for new messages since your last call. "
+        "Use register_agent once at session start."
+    ),
+)
+
+
+@_mcp.tool
+def poll_events_mcp(agent_id: str) -> dict:
+    """Retrieve new channel events since last poll. Returns compact plain-text lines.
+
+    Call before every reply to get messages you may have missed.
+    Mention events (sender->targets: content) are filtered — only visible to sender and mentioned agents.
+    """
+    return _dispatch({"action": "poll_events", "agent_id": agent_id})
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -57,13 +104,17 @@ def _dispatch(data: dict) -> dict | list:
     match action:
         case "register_agent":
             agent_id = data["agent_id"]
+            role = data.get("role", "")
             _agents[agent_id] = {
                 "name": data["name"],
+                "role": role,
                 "capabilities": data.get("capabilities", []),
                 "channel_id": data["channel_id"],
                 "registered_at": _now(),
             }
             _inboxes.setdefault(agent_id, [])
+            role_str = f" as {role}" if role else ""
+            _emit(f"{data['name']} joined{role_str}")
             return {"ok": True, "agent_id": agent_id, "channel_id": data["channel_id"]}
 
         case "list_agents":
@@ -108,14 +159,47 @@ def _dispatch(data: dict) -> dict | list:
             conv = _conversations.get(data["conversation_id"])
             if not conv:
                 return {"ok": False, "error": "Conversation not found"}
-            conv["messages"].append(
-                {"from": data["from_agent"], "content": data["content"], "at": _now()}
-            )
+            agent_name = _agents.get(data["from_agent"], {}).get("name", data["from_agent"])
+            mentions = data.get("mentions", [])
+            conv["messages"].append({
+                "from": data["from_agent"],
+                "from_name": agent_name,
+                "content": data["content"],
+                "mentions": mentions,
+                "at": _now(),
+            })
+            if mentions:
+                targets = ",".join(mentions)
+                _emit(f"{data['from_agent']}→{targets}: {data['content']}")
+            else:
+                _emit(f"{agent_name}: {data['content']}")
             return {"ok": True, "total_messages": len(conv["messages"])}
 
         case "get_conversation":
             conv = _conversations.get(data["conversation_id"])
-            return conv if conv else {"ok": False, "error": "Conversation not found"}
+            if not conv:
+                return {"ok": False, "error": "Conversation not found"}
+            since = data.get("since", 0)
+            result = dict(conv)
+            result["messages"] = conv["messages"][since:]
+            return result
+
+        case "poll_events":
+            agent_id = data["agent_id"]
+            cursor = _cursors.get(agent_id, 0)
+            new_events = _events[cursor:]
+            visible = []
+            for event in new_events:
+                if "→" in event.split(":")[0]:
+                    header = event.split(":")[0]
+                    sender, targets_str = header.split("→")
+                    targets = targets_str.split(",")
+                    if agent_id == sender or agent_id in targets:
+                        visible.append(event)
+                else:
+                    visible.append(event)
+            _cursors[agent_id] = cursor + len(new_events)
+            return {"events": visible, "cursor": _cursors[agent_id]}
 
         case _:
             return {"ok": False, "error": f"Unknown action: {action!r}"}
@@ -183,16 +267,53 @@ AGENT_CARD = AgentCard(
 # App
 # ---------------------------------------------------------------------------
 
+async def _join_handler(request: Request) -> JSONResponse:
+    token = request.path_params["token"]
+    if token != TOKEN:
+        return JSONResponse({"error": "Invalid token"}, status_code=404)
+    channel_id = f"{TOKEN}-general"
+    agents = [
+        {
+            "agent_id": aid,
+            "name": info["name"],
+            "role": info.get("role", ""),
+            "capabilities": info["capabilities"],
+        }
+        for aid, info in _agents.items()
+        if info["channel_id"] == channel_id
+    ]
+    active_conv_id = None
+    recent_messages = []
+    for conv_id, conv in _conversations.items():
+        if conv["channel_id"] == channel_id:
+            active_conv_id = conv_id
+            recent_messages = conv["messages"][-10:]
+    return JSONResponse({
+        "channel_id": channel_id,
+        "token": TOKEN,
+        "agents": agents,
+        "active_conversation_id": active_conv_id,
+        "recent_messages": recent_messages,
+    })
+
+
 _handler = LegacyRequestHandler(
     agent_executor=HubExecutor(),
     task_store=InMemoryTaskStore(),
     agent_card=AGENT_CARD,
 )
 
+_mcp_app = _mcp.http_app(path="/")
+
 app = Starlette(
+    lifespan=_mcp_app.lifespan,
     routes=(
         create_agent_card_routes(AGENT_CARD)
         + create_jsonrpc_routes(_handler, rpc_url="/")
+        + [
+            Route("/join/{token}", _join_handler),
+            Mount("/mcp", app=_mcp_app),
+        ]
     )
 )
 
@@ -204,11 +325,19 @@ if __name__ == "__main__":
     import argparse
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="AgentCouncil A2A Hub")
+    parser = argparse.ArgumentParser(description="AgentCouncil Hub")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     args = parser.parse_args()
 
-    print(f"AgentCouncil hub starting on http://{args.host}:{args.port}")
-    print(f"Agent card: http://{args.host}:{args.port}/.well-known/agent-card.json")
+    base = f"http://{args.host}:{args.port}"
+    print(f"AgentCouncil hub starting on {base}")
+    print("─" * 51)
+    print("Share this link to invite agents:")
+    print()
+    print(f"  {base}/join/{TOKEN}")
+    print()
+    print("─" * 51)
+    print(f"MCP endpoint:  {base}/mcp")
+    print(f"Agent card:    {base}/.well-known/agent-card.json")
     uvicorn.run(app, host=args.host, port=args.port)
