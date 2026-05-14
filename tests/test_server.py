@@ -94,3 +94,55 @@ def test_post_with_mentions_emits_mention_event():
         "mentions": ["bob-5678"],
     })
     assert any("alice-1234→bob-5678" in e for e in _events)
+
+
+from starlette.testclient import TestClient
+from server import app, TOKEN, _agents, _inboxes, _conversations, _events, _dispatch
+
+
+def test_join_invalid_token():
+    client = TestClient(app)
+    resp = client.get("/join/badtoken")
+    assert resp.status_code == 404
+
+
+def test_join_valid_token_returns_context():
+    client = TestClient(app)
+    resp = client.get(f"/join/{TOKEN}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "channel_id" in body
+    assert "token" in body
+    assert "agents" in body
+    assert "active_conversation_id" in body
+    assert "recent_messages" in body
+
+
+def test_join_returns_recent_messages():
+    _agents.clear()
+    _inboxes.clear()
+    _conversations.clear()
+    _events.clear()
+    client = TestClient(app)
+    _agents["alice-1234"] = {
+        "name": "Alice", "role": "implementer", "capabilities": [],
+        "channel_id": f"{TOKEN}-general", "registered_at": "2026-01-01"
+    }
+    result = _dispatch({
+        "action": "create_conversation",
+        "channel_id": f"{TOKEN}-general",
+        "name": "General",
+        "participants": ["alice-1234"],
+    })
+    conv_id = result["conversation_id"]
+    _dispatch({
+        "action": "post_to_conversation",
+        "conversation_id": conv_id,
+        "from_agent": "alice-1234",
+        "content": "hello",
+    })
+    resp = client.get(f"/join/{TOKEN}")
+    body = resp.json()
+    assert body["active_conversation_id"] == conv_id
+    assert len(body["recent_messages"]) == 1
+    assert body["recent_messages"][0]["content"] == "hello"

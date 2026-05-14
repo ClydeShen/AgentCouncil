@@ -16,6 +16,9 @@ from datetime import datetime, UTC
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf.struct_pb2 import Value
 from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -216,6 +219,36 @@ AGENT_CARD = AgentCard(
 # App
 # ---------------------------------------------------------------------------
 
+async def _join_handler(request: Request) -> JSONResponse:
+    token = request.path_params["token"]
+    if token != TOKEN:
+        return JSONResponse({"error": "Invalid token"}, status_code=404)
+    channel_id = f"{TOKEN}-general"
+    agents = [
+        {
+            "agent_id": aid,
+            "name": info["name"],
+            "role": info.get("role", ""),
+            "capabilities": info["capabilities"],
+        }
+        for aid, info in _agents.items()
+        if info["channel_id"] == channel_id
+    ]
+    active_conv_id = None
+    recent_messages = []
+    for conv_id, conv in _conversations.items():
+        if conv["channel_id"] == channel_id:
+            active_conv_id = conv_id
+            recent_messages = conv["messages"][-10:]
+    return JSONResponse({
+        "channel_id": channel_id,
+        "token": TOKEN,
+        "agents": agents,
+        "active_conversation_id": active_conv_id,
+        "recent_messages": recent_messages,
+    })
+
+
 _handler = LegacyRequestHandler(
     agent_executor=HubExecutor(),
     task_store=InMemoryTaskStore(),
@@ -224,7 +257,8 @@ _handler = LegacyRequestHandler(
 
 app = Starlette(
     routes=(
-        create_agent_card_routes(AGENT_CARD)
+        [Route("/join/{token}", _join_handler)]
+        + create_agent_card_routes(AGENT_CARD)
         + create_jsonrpc_routes(_handler, rpc_url="/")
     )
 )
