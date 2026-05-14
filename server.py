@@ -8,6 +8,8 @@ Run:
     python server.py --host 0.0.0.0 --port 8000
 """
 
+import random
+import string
 import uuid
 from datetime import datetime, UTC
 
@@ -42,6 +44,22 @@ _inboxes: dict[str, list] = {}
 
 _conversations: dict[str, dict] = {}
 # conv_id -> {name, channel_id, participants, messages, created_at}
+
+# ---------------------------------------------------------------------------
+# Token + event store
+# ---------------------------------------------------------------------------
+
+TOKEN: str = "".join(random.choices(string.ascii_letters + string.digits, k=6))
+
+_events: list[str] = []
+# plain-text event log: "alice: message", "bob joined as reviewer", etc.
+
+_cursors: dict[str, int] = {}
+# agent_id -> last event index delivered via poll_events
+
+
+def _emit(event: str) -> None:
+    _events.append(event)
 
 
 def _now() -> str:
