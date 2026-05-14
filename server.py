@@ -325,11 +325,19 @@ if __name__ == "__main__":
     import argparse
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="AgentCouncil A2A Hub")
+    parser = argparse.ArgumentParser(description="AgentCouncil Hub")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     args = parser.parse_args()
 
-    print(f"AgentCouncil hub starting on http://{args.host}:{args.port}")
-    print(f"Agent card: http://{args.host}:{args.port}/.well-known/agent-card.json")
+    base = f"http://{args.host}:{args.port}"
+    print(f"AgentCouncil hub starting on {base}")
+    print("─" * 51)
+    print("Share this link to invite agents:")
+    print()
+    print(f"  {base}/join/{TOKEN}")
+    print()
+    print("─" * 51)
+    print(f"MCP endpoint:  {base}/mcp")
+    print(f"Agent card:    {base}/.well-known/agent-card.json")
     uvicorn.run(app, host=args.host, port=args.port)
