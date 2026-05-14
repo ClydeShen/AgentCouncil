@@ -5,7 +5,7 @@ description = "Universal multi-agent A2A hub — any AI coding agent can join vi
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Clyde Shen", email = "clyde1229@gmail.com" }]
+authors = [{ name = "ClydeShen", url = "https://github.com/ClydeShen" }]
 keywords = ["a2a", "mcp", "multi-agent", "ai", "claude", "codex"]
 classifiers = [
     "Development Status :: 3 - Alpha",
