@@ -1,10 +1,43 @@
+# Python
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
 .python-version
+*.egg-info/
 dist/
 build/
-*.egg-info/
+.eggs/
+pip-wheel-metadata/
+MANIFEST
+
+# uv
 uv.lock
+
+# Environment
 .env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+
+# memobank
+.memobank/meta/access-log.json
+.memobank/meta/code-index.db
+.memobank/.lancedb/
+.memobank/pending/
