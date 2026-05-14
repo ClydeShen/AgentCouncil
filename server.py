@@ -75,13 +75,17 @@ def _dispatch(data: dict) -> dict | list:
     match action:
         case "register_agent":
             agent_id = data["agent_id"]
+            role = data.get("role", "")
             _agents[agent_id] = {
                 "name": data["name"],
+                "role": role,
                 "capabilities": data.get("capabilities", []),
                 "channel_id": data["channel_id"],
                 "registered_at": _now(),
             }
             _inboxes.setdefault(agent_id, [])
+            role_str = f" as {role}" if role else ""
+            _emit(f"{data['name']} joined{role_str}")
             return {"ok": True, "agent_id": agent_id, "channel_id": data["channel_id"]}
 
         case "list_agents":
@@ -126,9 +130,20 @@ def _dispatch(data: dict) -> dict | list:
             conv = _conversations.get(data["conversation_id"])
             if not conv:
                 return {"ok": False, "error": "Conversation not found"}
-            conv["messages"].append(
-                {"from": data["from_agent"], "content": data["content"], "at": _now()}
-            )
+            agent_name = _agents.get(data["from_agent"], {}).get("name", data["from_agent"])
+            mentions = data.get("mentions", [])
+            conv["messages"].append({
+                "from": data["from_agent"],
+                "from_name": agent_name,
+                "content": data["content"],
+                "mentions": mentions,
+                "at": _now(),
+            })
+            if mentions:
+                targets = ",".join(mentions)
+                _emit(f"{data['from_agent']}→{targets}: {data['content']}")
+            else:
+                _emit(f"{agent_name}: {data['content']}")
             return {"ok": True, "total_messages": len(conv["messages"])}
 
         case "get_conversation":
