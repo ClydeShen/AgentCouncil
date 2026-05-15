@@ -475,7 +475,7 @@ AGENT_CARD = AgentCard(
         "Register with a channel_id to scope your agent to a project. "
         "Send messages, create conversations, and collaborate."
     ),
-    version="0.1.0",
+    version="0.4.0",
     capabilities=AgentCapabilities(streaming=True),
     supported_interfaces=[AgentInterface(url="http://127.0.0.1:8000/")],
     skills=[AgentSkill(id=sid, name=name, description=desc) for sid, name, desc in SKILLS],
@@ -613,58 +613,211 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
 <meta charset="utf-8">
-<title>AgentCouncil Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentCouncil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
   tailwind.config = {
-    theme: { extend: { colors: { dark: '#1a1a2e', darker: '#16213e' } } }
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Sora', 'ui-sans-serif'],
+          mono: ['JetBrains Mono', 'ui-monospace'],
+        },
+        colors: {
+          zinc: {
+            950: '#09090b', 925: '#0f0f12', 900: '#18181b',
+            800: '#27272a', 700: '#3f3f46', 600: '#52525b',
+            500: '#71717a', 400: '#a1a1aa', 300: '#d4d4d8',
+            200: '#e4e4e7', 100: '#f4f4f5', 50: '#fafafa',
+          },
+        },
+        keyframes: {
+          'fade-in': { from: { opacity: 0, transform: 'translateY(4px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+          'pulse-dot': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.35 } },
+        },
+        animation: {
+          'fade-in': 'fade-in 0.2s ease-out',
+          'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
+        },
+      }
+    }
   }
 </script>
 <style>
-  body { font-family: ui-monospace, monospace; }
-  .msg-content { border-left: 2px solid #374151; }
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --bg:      #09090b;
+    --surface: #18181b;
+    --border:  #27272a;
+    --muted:   #3f3f46;
+    --text:    #fafafa;
+    --text-2:  #a1a1aa;
+    --text-3:  #71717a;
+    --cyan:    #22d3ee;
+    --cyan-dim:#164e63;
+    --green:   #4ade80;
+    --red:     #f87171;
+    --amber:   #fbbf24;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: 'Sora', ui-sans-serif; font-size: 13px; line-height: 1.5; }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 9999px; }
+
+  /* focus rings — WCAG AA */
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; border-radius: 4px; }
+
+  /* shadcn-style btn base */
+  .btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; font-family: 'Sora', ui-sans-serif; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; border: 1px solid transparent; white-space: nowrap; }
+  .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .btn-ghost  { background: transparent; border-color: var(--border); color: var(--text-2); }
+  .btn-ghost:hover  { background: var(--muted); color: var(--text); border-color: var(--muted); }
+  .btn-danger { background: transparent; border-color: #7f1d1d; color: var(--red); }
+  .btn-danger:hover { background: #450a0a; }
+  .btn-success { background: transparent; border-color: #14532d; color: var(--green); }
+  .btn-success:hover { background: #052e16; }
+
+  /* role badge */
+  .role-badge { display: inline-block; padding: 1px 7px; border-radius: 9999px; font-size: 10px; font-weight: 500; letter-spacing: 0.02em; font-family: 'JetBrains Mono', ui-monospace; }
+  .role-planner     { background: #1e3a5f; color: #7dd3fc; border: 1px solid #1d4ed8; }
+  .role-implementer { background: #14532d; color: #86efac; border: 1px solid #15803d; }
+  .role-reviewer    { background: #3b1f6a; color: #c4b5fd; border: 1px solid #7c3aed; }
+  .role-researcher  { background: #78350f; color: #fcd34d; border: 1px solid #d97706; }
+  .role-default     { background: var(--muted); color: var(--text-3); border: 1px solid var(--border); }
+
+  /* markdown render area */
+  .md { font-size: 12px; line-height: 1.65; color: var(--text-2); }
+  .md p    { margin: 0.2em 0; }
+  .md p:first-child { margin-top: 0; }
+  .md p:last-child  { margin-bottom: 0; }
+  .md strong { color: var(--text); font-weight: 600; }
+  .md em     { color: var(--text-2); }
+  .md code   { font-family: 'JetBrains Mono', ui-monospace; font-size: 11px; background: #0d1117; color: #e2e8f0; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); }
+  .md pre    { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; overflow-x: auto; margin: 6px 0; }
+  .md pre code { background: none; border: none; padding: 0; font-size: 11px; color: #e2e8f0; }
+  .md ul, .md ol { padding-left: 1.4em; margin: 4px 0; }
+  .md li { margin: 2px 0; }
+  .md h1 { font-size: 14px; font-weight: 600; color: var(--text); margin: 8px 0 4px; }
+  .md h2 { font-size: 13px; font-weight: 600; color: var(--text); margin: 6px 0 3px; }
+  .md h3 { font-size: 12px; font-weight: 600; color: var(--cyan); margin: 4px 0 2px; }
+  .md blockquote { border-left: 2px solid var(--muted); padding-left: 10px; color: var(--text-3); margin: 4px 0; }
+  .md a  { color: var(--cyan); text-decoration: underline; text-underline-offset: 2px; }
+  .md hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+  .md table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0; }
+  .md th { text-align: left; padding: 3px 8px; background: var(--surface); color: var(--text-3); font-weight: 500; border-bottom: 1px solid var(--border); }
+  .md td { padding: 3px 8px; border-bottom: 1px solid var(--muted); }
+
+  /* message fade-in */
+  .msg-row { animation: fade-in 0.18s ease-out; }
   #messages-list { scroll-behavior: smooth; }
+
+  /* status dot */
+  .status-dot { width: 7px; height: 7px; border-radius: 9999px; display: inline-block; flex-shrink: 0; }
+  .status-dot.live { background: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+  .status-dot.dead { background: var(--red); }
+  .status-dot.connecting { background: var(--amber); animation: pulse-dot 1.2s ease-in-out infinite; }
+
+  /* agent card */
+  .agent-card { border-bottom: 1px solid var(--border); padding: 10px 12px; cursor: pointer; transition: background 0.12s; }
+  .agent-card:hover { background: #1c1c1f; }
+  .agent-card:last-child { border-bottom: none; }
+  .agent-card.is-disabled { opacity: 0.45; }
+
+  /* panel header */
+  .panel-hdr { padding: 8px 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border); flex-shrink: 0; font-family: 'JetBrains Mono', ui-monospace; }
+
+  /* dialog */
+  .dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 320px; max-width: 480px; width: 90vw; box-shadow: 0 25px 60px rgba(0,0,0,0.7); }
+  .dialog-row { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .dialog-row:last-child { border-bottom: none; }
+  .dialog-label { color: var(--text-3); width: 88px; flex-shrink: 0; font-family: 'JetBrains Mono', ui-monospace; font-size: 11px; padding-top: 1px; }
+  .dialog-val { color: var(--text-2); word-break: break-all; }
 </style>
 </head>
-<body class="bg-[#1a1a2e] text-gray-300 h-screen flex flex-col text-xs">
+<body>
 
-<!-- Header -->
-<div class="flex items-center gap-4 px-4 py-2 bg-[#16213e] border-b border-gray-700 shrink-0">
-  <h1 class="text-sm font-bold text-blue-300">AgentCouncil</h1>
-  <span id="status" class="text-gray-500">connecting...</span>
-  <span id="channel-chip"
-    class="hidden ml-auto cursor-pointer select-none px-2 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-blue-800 hover:text-blue-200 transition-colors text-xs"
-    title="Click to copy join URL"
-    onclick="copyJoinUrl()"></span>
-</div>
+<!-- ── APP SHELL ── -->
+<div style="display:flex; flex-direction:column; height:100vh; overflow:hidden;">
 
-<!-- Main -->
-<div class="flex flex-1 overflow-hidden">
-
-  <!-- Agents panel -->
-  <div class="w-52 border-r border-gray-700 flex flex-col shrink-0">
-    <div class="px-3 py-2 text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-800">
-      Agents <span id="agent-count" class="text-gray-600"></span>
+  <!-- Header -->
+  <header style="display:flex; align-items:center; gap:12px; padding:0 16px; height:48px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <circle cx="10" cy="10" r="9" stroke="#22d3ee" stroke-width="1.5"/>
+        <circle cx="10" cy="10" r="4" fill="#22d3ee" opacity="0.25"/>
+        <circle cx="10" cy="10" r="1.5" fill="#22d3ee"/>
+        <line x1="10" y1="1" x2="10" y2="6" stroke="#22d3ee" stroke-width="1.2" opacity="0.5"/>
+        <line x1="10" y1="14" x2="10" y2="19" stroke="#22d3ee" stroke-width="1.2" opacity="0.5"/>
+        <line x1="1" y1="10" x2="6" y2="10" stroke="#22d3ee" stroke-width="1.2" opacity="0.5"/>
+        <line x1="14" y1="10" x2="19" y2="10" stroke="#22d3ee" stroke-width="1.2" opacity="0.5"/>
+      </svg>
+      <span style="font-weight:600; font-size:13px; letter-spacing:-0.01em; color:#fafafa;">AgentCouncil</span>
     </div>
-    <div id="agents-list" class="flex-1 overflow-y-auto py-1"></div>
-  </div>
 
-  <!-- Messages + input -->
-  <div class="flex-1 flex flex-col overflow-hidden">
-    <div class="px-3 py-2 text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-800 shrink-0">Messages</div>
-    <div id="messages-list" class="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2"></div>
+    <div id="status-wrap" style="display:flex; align-items:center; gap:6px; margin-left:4px;">
+      <span id="status-dot" class="status-dot connecting" aria-hidden="true"></span>
+      <span id="status" style="font-size:11px; color:var(--text-3); font-family:'JetBrains Mono',ui-monospace;" aria-live="polite">connecting…</span>
+    </div>
+
+    <button id="channel-chip"
+      onclick="copyJoinUrl()"
+      aria-label="Copy join URL to clipboard"
+      title="Click to copy join URL"
+      style="display:none; margin-left:auto; align-items:center; gap:6px; padding:4px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px; color:var(--text-3); font-size:11px; cursor:pointer; font-family:'JetBrains Mono',ui-monospace; transition:border-color 0.15s, color 0.15s;"
+      onmouseover="this.style.borderColor='var(--cyan)';this.style.color='var(--cyan)';"
+      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-3)';">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <rect x="4" y="4" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+        <path d="M8 4V2.5A1.5 1.5 0 006.5 1h-4A1.5 1.5 0 001 2.5v4A1.5 1.5 0 002.5 8H4" stroke="currentColor" stroke-width="1.2"/>
+      </svg>
+      <span id="chip-text"></span>
+    </button>
+  </header>
+
+  <!-- Body -->
+  <div style="display:flex; flex:1; overflow:hidden;">
+
+    <!-- Agents sidebar -->
+    <aside style="width:212px; border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0;" aria-label="Connected agents">
+      <div class="panel-hdr" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Agents</span>
+        <span id="agent-count" style="color:var(--text-3); font-size:10px;"></span>
+      </div>
+      <div id="agents-list" style="flex:1; overflow-y:auto;" role="list"></div>
+    </aside>
+
+    <!-- Messages -->
+    <main style="flex:1; display:flex; flex-direction:column; overflow:hidden;" aria-label="Message feed">
+      <div class="panel-hdr">Messages</div>
+      <div id="messages-list" style="flex:1; overflow-y:auto; padding:12px 16px; display:flex; flex-direction:column; gap:10px;" role="log" aria-live="polite" aria-atomic="false"></div>
+    </main>
+
   </div>
 </div>
 
-<!-- Agent popup -->
-<div id="popup-overlay" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-  <div class="bg-[#16213e] border border-gray-600 rounded p-5 min-w-[300px] shadow-xl">
-    <h2 id="popup-name" class="text-sm font-bold mb-3 text-blue-200"></h2>
-    <table id="popup-table" class="w-full mb-4 border-collapse"></table>
-    <div class="flex gap-2 justify-end">
-      <button onclick="closePopup()" class="px-3 py-1 border border-gray-600 rounded text-gray-300 hover:bg-gray-700 text-xs">close</button>
-      <button id="popup-toggle-btn" class="px-3 py-1 border rounded text-xs"></button>
-      <button id="popup-kick-btn" class="px-3 py-1 border border-red-700 text-red-400 hover:bg-red-900/30 rounded text-xs">kick</button>
+<!-- Agent detail dialog -->
+<div id="popup-overlay"
+  role="dialog" aria-modal="true" aria-labelledby="popup-name"
+  style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50; align-items:center; justify-content:center; backdrop-filter:blur(2px);">
+  <div class="dialog">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <span id="popup-dot" class="w-2.5 h-2.5 rounded-full" style="width:10px;height:10px;border-radius:9999px;flex-shrink:0;"></span>
+      <h2 id="popup-name" style="font-size:14px; font-weight:600; color:var(--text); margin:0;"></h2>
+      <span id="popup-role-badge" style="margin-left:4px;"></span>
+    </div>
+    <div id="popup-rows" style="margin-bottom:16px;"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+      <button onclick="closePopup()" class="btn btn-ghost">Close</button>
+      <button id="popup-toggle-btn" class="btn"></button>
+      <button id="popup-kick-btn" class="btn btn-danger">Kick</button>
     </div>
   </div>
 </div>
@@ -672,106 +825,156 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <script>
   let agents = {};
 
-  function ts(iso) { return iso ? iso.slice(11, 16) : ''; }
+  /* ── helpers ── */
+  function ts(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+    catch { return iso.slice(11,16); }
+  }
 
+  function roleBadge(role) {
+    const map = { planner:'role-planner', implementer:'role-implementer', reviewer:'role-reviewer', researcher:'role-researcher' };
+    const cls = map[(role||'').toLowerCase()] || 'role-default';
+    return role ? `<span class="role-badge ${cls}">${role}</span>` : `<span class="role-badge role-default">no role</span>`;
+  }
+
+  /* ── join URL chip ── */
   function copyJoinUrl() {
-    const url = document.getElementById('channel-chip').textContent;
+    const url = document.getElementById('chip-text').textContent;
     navigator.clipboard.writeText(url).then(() => {
       const chip = document.getElementById('channel-chip');
-      const orig = chip.textContent;
-      chip.textContent = 'copied!';
-      chip.classList.add('text-green-400');
-      setTimeout(() => { chip.textContent = orig; chip.classList.remove('text-green-400'); }, 1500);
+      const t = document.getElementById('chip-text');
+      const prev = t.textContent;
+      t.textContent = 'copied!';
+      chip.style.borderColor = 'var(--green)';
+      chip.style.color = 'var(--green)';
+      setTimeout(() => {
+        t.textContent = prev;
+        chip.style.borderColor = 'var(--border)';
+        chip.style.color = 'var(--text-3)';
+      }, 1500);
     });
   }
 
+  /* ── agent list ── */
   function renderAgents() {
     const list = document.getElementById('agents-list');
     list.innerHTML = '';
     const arr = Object.values(agents);
-    document.getElementById('agent-count').textContent = '(' + arr.filter(a => !a.disabled).length + ' live)';
+    const live = arr.filter(a => !a.disabled).length;
+    document.getElementById('agent-count').textContent = live + ' live';
+
     arr.forEach(a => {
-      const div = document.createElement('div');
-      div.className = 'px-3 py-2 border-b border-[#1a1a2e] cursor-pointer hover:bg-[#1e2a3a]' + (a.disabled ? ' opacity-40' : '');
-      div.innerHTML = `
-        <div class="flex items-center gap-1.5 mb-1">
-          <span class="w-2 h-2 rounded-full shrink-0" style="background:${a.color}"></span>
-          <span class="font-bold text-[11px] hover:underline cursor-pointer" onclick="showPopup('${a.id}')">${a.name}</span>
+      const card = document.createElement('div');
+      card.className = 'agent-card' + (a.disabled ? ' is-disabled' : '');
+      card.setAttribute('role', 'listitem');
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:7px; margin-bottom:5px;">
+          <span style="width:8px;height:8px;border-radius:9999px;flex-shrink:0;background:${a.color};${a.disabled ? '' : 'box-shadow:0 0 6px ' + a.color + '80;'}"></span>
+          <button onclick="showPopup('${a.id}')" style="font-weight:600; font-size:12px; color:var(--text); background:none; border:none; cursor:pointer; padding:0; text-align:left;" aria-haspopup="dialog">${a.name}</button>
         </div>
-        <div class="text-[10px] text-gray-500 mb-1.5">${a.role || 'no role'}</div>
-        <div class="flex gap-1.5">
+        <div style="margin-bottom:7px; padding-left:15px;">${roleBadge(a.role)}</div>
+        <div style="display:flex; gap:6px; padding-left:15px;">
           ${a.disabled
-            ? `<button onclick="enableAgent('${a.id}')" class="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-400 rounded hover:bg-green-900/30">enable</button>`
-            : `<button onclick="disableAgent('${a.id}')" class="text-[10px] px-1.5 py-0.5 border border-gray-600 text-gray-400 rounded hover:bg-gray-700">disable</button>`
+            ? `<button onclick="enableAgent('${a.id}')" class="btn btn-success" aria-label="Enable ${a.name}">Enable</button>`
+            : `<button onclick="disableAgent('${a.id}')" class="btn btn-ghost" aria-label="Pause ${a.name}">Pause</button>`
           }
-          <button onclick="kickAgent('${a.id}')" class="text-[10px] px-1.5 py-0.5 border border-red-800 text-red-500 rounded hover:bg-red-900/30">✕</button>
+          <button onclick="kickAgent('${a.id}')" class="btn btn-danger" aria-label="Kick ${a.name}">Kick</button>
         </div>`;
-      list.appendChild(div);
+      list.appendChild(card);
     });
   }
 
+  /* ── messages ── */
   function appendMessage(m) {
     const list = document.getElementById('messages-list');
     const div = document.createElement('div');
+    div.className = 'msg-row';
+
     if (m.system) {
-      div.className = 'text-center text-gray-600 italic text-[11px] py-1';
-      div.textContent = '── ' + m.content + ' ──';
+      div.style.cssText = 'text-align:center; color:var(--text-3); font-size:11px; padding:2px 0; display:flex; align-items:center; gap:8px;';
+      div.innerHTML = `<span style="flex:1; height:1px; background:var(--border);"></span><span style="white-space:nowrap; font-family:\'JetBrains Mono\',ui-monospace;">${m.content}</span><span style="flex:1; height:1px; background:var(--border);"></span>`;
     } else {
-      const toLabel = m.to && m.to !== 'all' ? ` → ${m.to}` : ' → all';
+      const isDirect = m.to && m.to !== 'all';
+      const toLabel = isDirect
+        ? `<span style="color:var(--cyan); font-size:10px;">→ ${m.to}</span>`
+        : `<span style="color:var(--text-3); font-size:10px; opacity:0.6;">→ all</span>`;
       div.innerHTML = `
-        <div class="text-[10px] text-gray-600 mb-0.5">
-          <span class="font-bold" style="color:${m.color}">${m.from}</span>${toLabel}
-          <span class="ml-2">${ts(m.at)}</span>
+        <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:5px; flex-wrap:wrap;">
+          <span style="font-weight:600; font-size:12px; color:${m.color}; font-family:\'JetBrains Mono\',ui-monospace;">${m.from}</span>
+          ${toLabel}
+          <span style="color:var(--text-3); font-size:10px; margin-left:auto; font-family:\'JetBrains Mono\',ui-monospace;">${ts(m.at)}</span>
         </div>
-        <div class="msg-content pl-2 text-[11px] text-gray-300">${m.content.replace(/</g,'&lt;')}</div>`;
+        <div class="md" style="padding-left:1px; border-left:2px solid ${m.color}40; padding-left:10px;">${marked.parse(m.content)}</div>`;
     }
+
     list.appendChild(div);
     list.scrollTop = list.scrollHeight;
   }
 
+  /* ── agent actions ── */
   function kickAgent(id) {
-    if (!confirm('Kick ' + (agents[id]?.name || id) + '?')) return;
+    if (!confirm('Remove ' + (agents[id]?.name || id) + ' from the channel?')) return;
     fetch('/dashboard/kick/' + id, {method:'POST'});
   }
   function disableAgent(id) { fetch('/dashboard/disable/' + id, {method:'POST'}); }
-  function enableAgent(id) { fetch('/dashboard/enable/' + id, {method:'POST'}); }
+  function enableAgent(id)  { fetch('/dashboard/enable/'  + id, {method:'POST'}); }
 
+  /* ── popup ── */
   function showPopup(id) {
     const a = agents[id];
     if (!a) return;
     document.getElementById('popup-name').textContent = a.name;
+    document.getElementById('popup-dot').style.background = a.color;
+    document.getElementById('popup-role-badge').innerHTML = roleBadge(a.role);
+
     const caps = (a.capabilities || []).join(', ') || '—';
-    const joined = a.joined_at ? ts(a.joined_at) : '—';
-    document.getElementById('popup-table').innerHTML = `
-      <tr><td class="text-gray-500 w-24 py-0.5">ID</td><td class="py-0.5 text-gray-300 break-all">${a.id}</td></tr>
-      <tr><td class="text-gray-500 py-0.5">Role</td><td class="py-0.5 text-gray-300">${a.role || '—'}</td></tr>
-      <tr><td class="text-gray-500 py-0.5">Status</td><td class="py-0.5 text-gray-300">${a.disabled ? 'disabled' : 'active'}</td></tr>
-      <tr><td class="text-gray-500 py-0.5">Joined</td><td class="py-0.5 text-gray-300">${joined}</td></tr>
-      <tr><td class="text-gray-500 py-0.5">Capabilities</td><td class="py-0.5 text-gray-300">${caps}</td></tr>`;
-    const toggleBtn = document.getElementById('popup-toggle-btn');
+    const rows = [
+      ['ID', `<span style="font-family:\'JetBrains Mono\',ui-monospace; font-size:10px; word-break:break-all;">${a.id}</span>`],
+      ['Status', a.disabled ? `<span style="color:var(--red);">disabled</span>` : `<span style="color:var(--green);">active</span>`],
+      ['Joined', ts(a.joined_at) || '—'],
+      ['Capabilities', caps],
+    ];
+    document.getElementById('popup-rows').innerHTML = rows.map(([l,v]) =>
+      `<div class="dialog-row"><span class="dialog-label">${l}</span><span class="dialog-val">${v}</span></div>`
+    ).join('');
+
+    const btn = document.getElementById('popup-toggle-btn');
     if (a.disabled) {
-      toggleBtn.textContent = 'enable';
-      toggleBtn.className = 'px-3 py-1 border border-green-700 text-green-400 rounded hover:bg-green-900/30 text-xs';
-      toggleBtn.onclick = () => { enableAgent(id); closePopup(); };
+      btn.textContent = 'Enable';
+      btn.className = 'btn btn-success';
+      btn.onclick = () => { enableAgent(id); closePopup(); };
     } else {
-      toggleBtn.textContent = 'disable';
-      toggleBtn.className = 'px-3 py-1 border border-gray-600 text-gray-400 rounded hover:bg-gray-700 text-xs';
-      toggleBtn.onclick = () => { disableAgent(id); closePopup(); };
+      btn.textContent = 'Pause';
+      btn.className = 'btn btn-ghost';
+      btn.onclick = () => { disableAgent(id); closePopup(); };
     }
     document.getElementById('popup-kick-btn').onclick = () => { kickAgent(id); closePopup(); };
-    document.getElementById('popup-overlay').classList.remove('hidden');
-    document.getElementById('popup-overlay').classList.add('flex');
+
+    const overlay = document.getElementById('popup-overlay');
+    overlay.style.display = 'flex';
+    overlay.querySelector('.dialog').focus();
   }
 
   function closePopup() {
-    document.getElementById('popup-overlay').classList.add('hidden');
-    document.getElementById('popup-overlay').classList.remove('flex');
+    document.getElementById('popup-overlay').style.display = 'none';
   }
 
   document.getElementById('popup-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closePopup();
   });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePopup();
+  });
 
+  /* ── status ── */
+  function setStatus(state, text) {
+    const dot = document.getElementById('status-dot');
+    document.getElementById('status').textContent = text;
+    dot.className = 'status-dot ' + state;
+  }
+
+  /* ── SSE ── */
   const es = new EventSource('/dashboard/events');
 
   es.addEventListener('message', e => {
@@ -782,19 +985,19 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       msg.agents.forEach(a => { agents[a.id] = a; });
       renderAgents();
       msg.messages.forEach(appendMessage);
-      document.getElementById('status').textContent = 'connected';
-      const chip = document.getElementById('channel-chip');
-      chip.textContent = window.location.origin + '/join/TOKEN_PLACEHOLDER';
-      chip.classList.remove('hidden');
+      setStatus('live', 'connected');
+      const joinUrl = window.location.origin + '/join/TOKEN_PLACEHOLDER';
+      document.getElementById('chip-text').textContent = joinUrl;
+      document.getElementById('channel-chip').style.display = 'inline-flex';
     } else if (msg.type === 'agent_joined') {
-      agents[msg.id] = {id: msg.id, name: msg.name, role: msg.role, color: msg.color, capabilities: msg.capabilities || [], joined_at: msg.joined_at, disabled: false};
+      agents[msg.id] = {id:msg.id, name:msg.name, role:msg.role, color:msg.color, capabilities:msg.capabilities||[], joined_at:msg.joined_at, disabled:false};
       renderAgents();
-      appendMessage({system: true, content: msg.name + ' joined'});
+      appendMessage({system:true, content:msg.name + ' joined'});
     } else if (msg.type === 'agent_left') {
       const name = agents[msg.id]?.name || msg.id;
       delete agents[msg.id];
       renderAgents();
-      appendMessage({system: true, content: name + ' left'});
+      appendMessage({system:true, content:name + ' left'});
     } else if (msg.type === 'agent_disabled') {
       if (agents[msg.id]) { agents[msg.id].disabled = true; renderAgents(); }
     } else if (msg.type === 'agent_enabled') {
@@ -804,9 +1007,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     }
   });
 
-  es.onerror = () => {
-    document.getElementById('status').textContent = 'disconnected — retrying...';
-  };
+  es.onerror = () => setStatus('dead', 'disconnected — retrying…');
 </script>
 </body>
 </html>"""

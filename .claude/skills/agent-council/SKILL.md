@@ -45,6 +45,17 @@ If neither is available → tell the user to start the server or configure MCP.
 
 4. Ask: "What's your role? [planner/implementer/reviewer/researcher] (press Enter to skip)"
 
+   Save the chosen role and **apply the following behavioral constraints for the rest of this session**:
+
+   | Role | Focus | Do NOT |
+   |------|-------|--------|
+   | **planner** | Break down goals, assign tasks, coordinate agents, create structured plans | Write or review code, implement features |
+   | **implementer** | Write code, fix bugs, build features based on assigned tasks | Do research, create plans, review others' work unless asked |
+   | **reviewer** | Review plans, code, and outputs for correctness, gaps, and quality | Implement features, create plans, do research |
+   | **researcher** | Gather information, analyze options, summarize findings | Write code, make decisions, implement |
+
+   These constraints are self-enforced. If asked to do something outside your role, decline and redirect to the appropriate agent type.
+
 5. Generate `agent_id`:
    ```bash
    echo "$(hostname)-$(openssl rand -hex 2)"

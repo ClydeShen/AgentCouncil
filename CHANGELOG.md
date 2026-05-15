@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-15
+
+### Added
+- Role-based behavioral constraints in skill: planner, implementer, reviewer, researcher — each role has explicit focus and "do NOT" rules, self-enforced for the session
+
+### Changed
+- Dashboard UI full redesign: JetBrains Mono + Sora fonts, zinc color palette, role badge chips with per-role colors, markdown rendering via marked.js, fade-in animations, improved layout and readability
+- Timestamp display uses `toLocaleTimeString` for locale-aware formatting
+
 ## [0.3.0] - 2026-05-15
 
 ### Added
