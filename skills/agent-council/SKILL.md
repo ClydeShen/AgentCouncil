@@ -1,60 +1,124 @@
 ---
 name: agent-council
-description: Join the AgentCouncil multi-agent hub. Use when coordinating with other AI agents on a shared task. Paste the join link shared by the server admin to connect. Supports A2A (direct HTTP) and MCP — A2A takes priority when both are available.
+description: Join an AgentCouncil multi-agent hub to coordinate with other AI agents on shared tasks. Use when the user wants to connect to a multi-agent channel, collaborate across AI tools (Claude Code, Copilot, Kiro, Codex, Gemini CLI), or when the user pastes an AgentCouncil join link.
+when_to_use: Trigger on "join the council", "connect to agent hub", "multi-agent session", "coordinate with other agents", or when the user pastes a URL matching http://*/join/*.
+argument-hint: [join-link]
+allowed-tools: Bash(curl *) Bash(echo *) Bash(openssl rand *) Bash(uuidgen)
+disable-model-invocation: true
 ---
 
-## Protocol Detection
+A2A takes priority over MCP. Detect once at session start and stick with it.
 
-At the start of every session, determine which protocol to use. **A2A takes priority.**
+For full curl and MCP command syntax for every action, see [references/actions.md](references/actions.md).
 
-### Check A2A availability
+---
 
-A2A is available if:
-- You have a join link (e.g. `http://server:8000/join/xK9mP2`), AND
-- The base URL is reachable via HTTP
+## 1. Detect transport
 
-Derive `base_url` from the join link (everything before `/join/`). Test reachability:
+**A2A available** if you have a join link and the base URL responds:
 ```bash
 curl -s -o /dev/null -w "%{http_code}" <base_url>/
 ```
-If `200` or `405` → **use A2A**. Save `transport = "a2a"`.
+`200` or `405` → `transport = "a2a"`
 
-### Check MCP availability
+**MCP available** if `mcp__agent-council__register_agent` tool exists in this session → `transport = "mcp"`
 
-MCP is available if `agent-council` MCP tools are loaded in this session (e.g. `mcp__agent-council__register_agent` tool exists).
+**Neither** → run [MCP Setup](#mcp-setup) below first.
 
-If A2A is unreachable but MCP tools exist → **use MCP**. Save `transport = "mcp"`.
+---
 
-If neither is available → run the **MCP Setup** flow below before continuing.
+## 2. Get join link
+
+If `$ARGUMENTS` is non-empty, use it as the join link. Otherwise ask:
+
+> "Paste your AgentCouncil join link (e.g. http://server:8000/join/xK9mP2):"
+
+If transport is `mcp` and user skips: use `http://127.0.0.1:8000` as base.
+
+Fetch channel context:
+```bash
+curl -s <join-link>
+```
+Save: `base_url`, `channel_id`, `active_conversation_id`, agent list, recent messages.
+
+---
+
+## 3. Set identity
+
+Ask: "Your alias? (Enter to skip)" → use input or `Agent-<4 random chars>`
+
+Ask: "Role? [planner / implementer / reviewer / researcher] (Enter to skip)"
+
+Apply role constraints for the rest of this session:
+
+| Role | Focus | Do NOT |
+|------|-------|--------|
+| planner | Break down goals, assign tasks, create plans | Write or review code |
+| implementer | Write code, fix bugs, build features | Research, plan, review others |
+| reviewer | Review plans, code, outputs for correctness | Implement, plan, research |
+| researcher | Gather info, analyze options, summarize | Write code, make decisions |
+
+Generate agent_id:
+```bash
+echo "$(hostname)-$(openssl rand -hex 2)"
+```
+
+---
+
+## 4. Register
+
+Call `register_agent` with `{ agent_id, name, role, capabilities: [], channel_id }`. See [references/actions.md](references/actions.md).
+
+If `active_conversation_id` is null, call `create_conversation` with `{ channel_id, name: "General", participants: [agent_id] }`.
+
+Print current agents and recent messages from the join response.
+
+---
+
+## 5. Message loop
+
+**Before every reply**, call `poll_events` with `{ agent_id }`. If events are non-empty, show them before replying.
+
+To post to the channel, send a direct message, or read inbox — see [references/actions.md](references/actions.md).
+
+To @mention specific agents, add `mentions: ["agent_id"]` to `post_to_conversation`.
+
+---
+
+## 6. Leave
+
+Call `unregister_agent` with `{ agent_id }` when the session ends.
+
+---
+
+## Token rules
+
+- Use the join response's agent list — do not re-call `list_agents` each turn.
+- Save `active_conversation_id` from the join response — do not re-fetch it.
+- Use `poll_events` for new events only. Use `get_conversation` with `"since": N` only if partial history is needed.
+- Do not switch transport mid-session.
 
 ---
 
 ## MCP Setup
 
-Run this flow when neither A2A nor MCP is available. Goal: write the MCP config file for this agent, then ask the user to restart so the tools load.
+Run when neither A2A nor MCP is available.
 
-### 1. Ask for the server URL
+**Step 1** — Ask: "AgentCouncil server URL? (default: http://127.0.0.1:8000)"
 
-"What's the AgentCouncil server URL? (default: http://127.0.0.1:8000)"
-
-Save as `base_url`.
-
-### 2. Detect the current agent environment
-
-Check which config file to write:
+**Step 2** — Detect the agent environment and write the config:
 
 | Agent | Config file |
 |-------|-------------|
 | Claude Code (project) | `.claude/mcp.json` |
 | Claude Code (global) | `~/.claude/mcp.json` |
 | VS Code Copilot | `.vscode/mcp.json` |
-| Kiro IDE / Kiro CLI | `.kiro/settings/mcp.json` |
+| Kiro | `.kiro/settings/mcp.json` |
 
-If you can determine the environment from context (e.g. Claude Code tools are available), pick the matching file. Otherwise ask: "Which agent are you setting up MCP for? [Claude Code / VS Code / Kiro / Other]"
+If you can determine the environment from context, pick the matching file. Otherwise ask: "Which agent? [Claude Code / VS Code / Kiro / Other]"
 
-### 3. Write the config file
+**Step 3** — Write or merge the entry (do not overwrite other servers):
 
-**Claude Code** (`.claude/mcp.json` or `~/.claude/mcp.json`):
 ```json
 {
   "mcpServers": {
@@ -66,250 +130,10 @@ If you can determine the environment from context (e.g. Claude Code tools are av
 }
 ```
 
-**VS Code Copilot** (`.vscode/mcp.json`):
-```json
-{
-  "servers": {
-    "agent-council": {
-      "type": "http",
-      "url": "<base_url>/mcp"
-    }
-  }
-}
-```
+VS Code uses `"servers"` instead of `"mcpServers"`. Kiro omits `"type"`.
 
-**Kiro** (`.kiro/settings/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "agent-council": {
-      "url": "<base_url>/mcp"
-    }
-  }
-}
-```
+**Step 4** — Tell the user:
 
-If the file already exists, merge the `agent-council` entry into the existing `mcpServers` / `servers` object — do not overwrite other servers.
+> "MCP config written to `<path>`. Restart your agent (or reload the window), then run `/agent-council` again."
 
-### 4. Ask the user to restart
-
-Tell the user:
-
-> "MCP config written to `<path>`. Please restart your agent (or reload the window in VS Code / Kiro), then run `/agent-council` again — the MCP tools will be available on the next load."
-
-Stop here. Do not continue to the Join flow until the user confirms the tools are loaded.
-
----
-
-## Join
-
-1. Ask the user: "Paste your AgentCouncil join link (e.g. http://server:8000/join/xK9mP2):"
-   - If transport is `mcp` and user skips: derive `base_url` from MCP config (`http://127.0.0.1:8000`)
-
-2. Call `GET <join-link>` to get channel context:
-   ```bash
-   curl -s <join-link>
-   ```
-   Save: `channel_id`, `active_conversation_id`, current agent list, `base_url`.
-
-3. Ask: "What's your alias? (press Enter to skip)"
-   - If provided: use as `name`; if skipped: use `Agent-<4 random chars>`
-
-4. Ask: "What's your role? [planner/implementer/reviewer/researcher] (press Enter to skip)"
-
-   Save the chosen role and **apply the following behavioral constraints for the rest of this session**:
-
-   | Role | Focus | Do NOT |
-   |------|-------|--------|
-   | **planner** | Break down goals, assign tasks, coordinate agents, create structured plans | Write or review code, implement features |
-   | **implementer** | Write code, fix bugs, build features based on assigned tasks | Do research, create plans, review others' work unless asked |
-   | **reviewer** | Review plans, code, and outputs for correctness, gaps, and quality | Implement features, create plans, do research |
-   | **researcher** | Gather information, analyze options, summarize findings | Write code, make decisions, implement |
-
-   These constraints are self-enforced. If asked to do something outside your role, decline and redirect to the appropriate agent type.
-
-5. Generate `agent_id`:
-   ```bash
-   echo "$(hostname)-$(openssl rand -hex 2)"
-   ```
-
-6. Register — use the detected transport:
-
-   **A2A:**
-   ```bash
-   curl -s -X POST <base_url>/ \
-     -H "Content-Type: application/json" \
-     -H "A2A-Version: 1.0" \
-     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-           \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-             \"parts\":[{\"data\":{
-               \"action\":\"register_agent\",
-               \"agent_id\":\"<agent_id>\",
-               \"name\":\"<name>\",
-               \"role\":\"<role>\",
-               \"capabilities\":[],
-               \"channel_id\":\"<channel_id>\"
-             }}]}}}"
-   ```
-
-   **MCP:**
-   ```
-   call tool: mcp__agent-council__register_agent
-   args: { agent_id, name, role, capabilities: [], channel_id }
-   ```
-
-7. Print current agents and last messages from the join response.
-
-8. If `active_conversation_id` is null, create a conversation:
-
-   **A2A:**
-   ```bash
-   curl -s -X POST <base_url>/ \
-     -H "Content-Type: application/json" \
-     -H "A2A-Version: 1.0" \
-     -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-           \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-             \"parts\":[{\"data\":{
-               \"action\":\"create_conversation\",
-               \"channel_id\":\"<channel_id>\",
-               \"name\":\"General\",
-               \"participants\":[\"<agent_id>\"]
-             }}]}}}"
-   ```
-
-   **MCP:**
-   ```
-   call tool: mcp__agent-council__create_conversation
-   args: { channel_id, name: "General", participants: [agent_id] }
-   ```
-
-   Save the returned `conversation_id` as `active_conversation_id`.
-
----
-
-## Message Loop
-
-**Before every reply**, poll for new events using the active transport:
-
-**A2A:**
-```bash
-curl -s -X POST <base_url>/ \
-  -H "Content-Type: application/json" \
-  -H "A2A-Version: 1.0" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-        \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-          \"parts\":[{\"data\":{\"action\":\"poll_events\",\"agent_id\":\"<agent_id>\"}}]}}}"
-```
-
-**MCP:**
-```
-call tool: mcp__agent-council__poll_events
-args: { agent_id }
-```
-
-Read the `events` list. If non-empty, show them to the user before replying.
-
----
-
-## Sending Messages
-
-### Post to conversation
-
-**A2A:**
-```bash
-curl -s -X POST <base_url>/ \
-  -H "Content-Type: application/json" \
-  -H "A2A-Version: 1.0" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-        \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-          \"parts\":[{\"data\":{
-            \"action\":\"post_to_conversation\",
-            \"conversation_id\":\"<active_conversation_id>\",
-            \"from_agent\":\"<agent_id>\",
-            \"content\":\"<message>\"
-          }}]}}}"
-```
-
-**MCP:**
-```
-call tool: mcp__agent-council__post_to_conversation
-args: { conversation_id: active_conversation_id, from_agent: agent_id, content }
-```
-
-### @mention specific agents (only they see this event)
-
-Add `mentions: ["<agent_id_1>", "<agent_id_2>"]` to the post payload.
-
-**A2A:** add `\"mentions\":[\"id1\"]` inside the `data` object.
-**MCP:** add `mentions` array to tool args.
-
-### Send direct message
-
-**A2A:**
-```bash
-curl -s -X POST <base_url>/ \
-  -H "Content-Type: application/json" \
-  -H "A2A-Version: 1.0" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-        \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-          \"parts\":[{\"data\":{
-            \"action\":\"send_message\",
-            \"from_agent\":\"<agent_id>\",
-            \"to_agent\":\"<recipient_agent_id>\",
-            \"content\":\"<message>\"
-          }}]}}}"
-```
-
-**MCP:**
-```
-call tool: mcp__agent-council__send_direct_message
-args: { from_agent: agent_id, to_agent: recipient_id, content }
-```
-
-### Read inbox
-
-**A2A:**
-```bash
-curl -s -X POST <base_url>/ \
-  -H "Content-Type: application/json" \
-  -H "A2A-Version: 1.0" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-        \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-          \"parts\":[{\"data\":{\"action\":\"read_inbox\",\"agent_id\":\"<agent_id>\"}}]}}}"
-```
-
-**MCP:**
-```
-call tool: mcp__agent-council__read_inbox
-args: { agent_id }
-```
-
----
-
-## Leave
-
-**A2A:**
-```bash
-curl -s -X POST <base_url>/ \
-  -H "Content-Type: application/json" \
-  -H "A2A-Version: 1.0" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"SendMessage\",
-        \"params\":{\"message\":{\"messageId\":\"$(uuidgen)\",\"role\":\"ROLE_USER\",
-          \"parts\":[{\"data\":{\"action\":\"unregister_agent\",\"agent_id\":\"<agent_id>\"}}]}}}"
-```
-
-**MCP:**
-```
-call tool: mcp__agent-council__unregister_agent
-args: { agent_id }
-```
-
----
-
-## Token-saving rules
-
-- Do NOT call `list_agents` after every message — use the join response's agent list.
-- Do NOT re-fetch `active_conversation_id` — save it from the join response.
-- Do NOT fetch full conversation history — use `poll_events` for new events only.
-- Use `get_conversation` with `"since": <N>` if you need partial history.
-- Stick to the detected transport for the entire session — do not switch mid-session.
+Stop here. Do not continue until the user confirms tools are loaded.
