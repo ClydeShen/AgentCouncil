@@ -575,6 +575,217 @@ async def _join_handler(request: Request) -> JSONResponse:
     })
 
 
+_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentCouncil Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; font-size: 13px; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+  #header { padding: 10px 16px; background: #16213e; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 16px; }
+  #header h1 { font-size: 14px; color: #a0c4ff; }
+  #status { font-size: 12px; color: #888; }
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #agents-panel { width: 220px; border-right: 1px solid #333; display: flex; flex-direction: column; }
+  #agents-title { padding: 8px 12px; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #222; }
+  #agents-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .agent { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #1a1a2e; }
+  .agent:hover { background: #1e2a3a; }
+  .agent.disabled { opacity: 0.45; }
+  .agent-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .agent-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .agent-name { font-weight: bold; font-size: 12px; }
+  .agent-role { font-size: 11px; color: #888; margin-bottom: 6px; }
+  .agent-actions { display: flex; gap: 6px; }
+  .btn { font-family: monospace; font-size: 11px; padding: 2px 7px; border: 1px solid #444; background: #222; color: #ccc; cursor: pointer; border-radius: 2px; }
+  .btn:hover { background: #333; }
+  .btn-kick { border-color: #c0392b; color: #e74c3c; }
+  .btn-kick:hover { background: #2a1a1a; }
+  .btn-disable { border-color: #555; }
+  .btn-enable { border-color: #2ecc71; color: #2ecc71; }
+  #messages-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #messages-title { padding: 8px 12px; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #222; }
+  #messages-list { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { display: flex; flex-direction: column; gap: 2px; }
+  .msg-header { font-size: 11px; color: #666; }
+  .msg-sender { font-weight: bold; }
+  .msg-system { font-style: italic; color: #666; font-size: 12px; text-align: center; padding: 4px 0; }
+  .msg-content { font-size: 12px; color: #ccc; padding-left: 4px; border-left: 2px solid #333; }
+  #popup-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+  #popup-overlay.visible { display: flex; }
+  #popup { background: #16213e; border: 1px solid #333; padding: 20px; min-width: 280px; border-radius: 4px; }
+  #popup h2 { font-size: 14px; margin-bottom: 12px; }
+  #popup table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  #popup td { padding: 3px 0; font-size: 12px; }
+  #popup td:first-child { color: #888; width: 90px; }
+  #popup-actions { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>AgentCouncil Dashboard</h1>
+  <span id="status">connecting...</span>
+</div>
+<div id="main">
+  <div id="agents-panel">
+    <div id="agents-title">Agents <span id="agent-count"></span></div>
+    <div id="agents-list"></div>
+  </div>
+  <div id="messages-panel">
+    <div id="messages-title">Messages</div>
+    <div id="messages-list"></div>
+  </div>
+</div>
+<div id="popup-overlay">
+  <div id="popup">
+    <h2 id="popup-name"></h2>
+    <table id="popup-table"></table>
+    <div id="popup-actions">
+      <button class="btn" onclick="closePopup()">close</button>
+      <button class="btn btn-disable" id="popup-toggle-btn"></button>
+      <button class="btn btn-kick" id="popup-kick-btn">kick</button>
+    </div>
+  </div>
+</div>
+<script>
+  let agents = {};
+
+  function ts(iso) {
+    return iso ? iso.slice(11, 16) : '';
+  }
+
+  function renderAgents() {
+    const list = document.getElementById('agents-list');
+    list.innerHTML = '';
+    const arr = Object.values(agents);
+    document.getElementById('agent-count').textContent = '(' + arr.filter(a => !a.disabled).length + ' live)';
+    arr.forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'agent' + (a.disabled ? ' disabled' : '');
+      div.innerHTML = `
+        <div class="agent-header">
+          <span class="agent-dot" style="background:${a.color}"></span>
+          <span class="agent-name" onclick="showPopup('${a.id}')" style="cursor:pointer">${a.name}</span>
+        </div>
+        <div class="agent-role">${a.role || 'no role'}</div>
+        <div class="agent-actions">
+          ${a.disabled
+            ? `<button class="btn btn-enable" onclick="enableAgent('${a.id}')">enable</button>`
+            : `<button class="btn btn-disable" onclick="disableAgent('${a.id}')">disable</button>`
+          }
+          <button class="btn btn-kick" onclick="kickAgent('${a.id}')">&#x2715;</button>
+        </div>`;
+      list.appendChild(div);
+    });
+  }
+
+  function appendMessage(m) {
+    const list = document.getElementById('messages-list');
+    const div = document.createElement('div');
+    if (m.system) {
+      div.className = 'msg-system';
+      div.textContent = '── ' + m.content + ' ──';
+    } else {
+      div.className = 'msg';
+      const toLabel = m.to && m.to !== 'all' ? ` → ${m.to}` : ' → all';
+      div.innerHTML = `
+        <div class="msg-header">
+          <span class="msg-sender" style="color:${m.color}">${m.from}</span>${toLabel}
+          <span style="margin-left:8px">${ts(m.at)}</span>
+        </div>
+        <div class="msg-content">${m.content.replace(/</g,'&lt;')}</div>`;
+    }
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function kickAgent(id) {
+    if (!confirm('Kick ' + (agents[id]?.name || id) + '?')) return;
+    fetch('/dashboard/kick/' + id, {method:'POST'});
+  }
+
+  function disableAgent(id) {
+    fetch('/dashboard/disable/' + id, {method:'POST'});
+  }
+
+  function enableAgent(id) {
+    fetch('/dashboard/enable/' + id, {method:'POST'});
+  }
+
+  function showPopup(id) {
+    const a = agents[id];
+    if (!a) return;
+    document.getElementById('popup-name').textContent = a.name;
+    document.getElementById('popup-table').innerHTML = `
+      <tr><td>ID</td><td>${a.id}</td></tr>
+      <tr><td>Role</td><td>${a.role || '—'}</td></tr>
+      <tr><td>Status</td><td>${a.disabled ? 'disabled' : 'active'}</td></tr>`;
+    const toggleBtn = document.getElementById('popup-toggle-btn');
+    if (a.disabled) {
+      toggleBtn.textContent = 'enable';
+      toggleBtn.className = 'btn btn-enable';
+      toggleBtn.onclick = () => { enableAgent(id); closePopup(); };
+    } else {
+      toggleBtn.textContent = 'disable';
+      toggleBtn.className = 'btn btn-disable';
+      toggleBtn.onclick = () => { disableAgent(id); closePopup(); };
+    }
+    document.getElementById('popup-kick-btn').onclick = () => { kickAgent(id); closePopup(); };
+    document.getElementById('popup-overlay').classList.add('visible');
+  }
+
+  function closePopup() {
+    document.getElementById('popup-overlay').classList.remove('visible');
+  }
+
+  document.getElementById('popup-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closePopup();
+  });
+
+  const es = new EventSource('/dashboard/events');
+
+  es.addEventListener('message', e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'ping') return;
+
+    if (msg.type === 'snapshot') {
+      msg.agents.forEach(a => { agents[a.id] = a; });
+      renderAgents();
+      msg.messages.forEach(appendMessage);
+      document.getElementById('status').textContent = 'connected · channel: TOKEN_PLACEHOLDER';
+    } else if (msg.type === 'agent_joined') {
+      agents[msg.id] = {id: msg.id, name: msg.name, role: msg.role, color: msg.color, disabled: false};
+      renderAgents();
+      appendMessage({system: true, content: msg.name + ' joined'});
+    } else if (msg.type === 'agent_left') {
+      const name = agents[msg.id]?.name || msg.id;
+      delete agents[msg.id];
+      renderAgents();
+      appendMessage({system: true, content: name + ' left'});
+    } else if (msg.type === 'agent_disabled') {
+      if (agents[msg.id]) { agents[msg.id].disabled = true; renderAgents(); }
+    } else if (msg.type === 'agent_enabled') {
+      if (agents[msg.id]) { agents[msg.id].disabled = false; renderAgents(); }
+    } else if (msg.type === 'message') {
+      appendMessage(msg);
+    }
+  });
+
+  es.onerror = () => {
+    document.getElementById('status').textContent = 'disconnected — retrying...';
+  };
+</script>
+</body>
+</html>"""
+
+
+async def _dashboard_html(request: Request):
+    from starlette.responses import HTMLResponse
+    html = _DASHBOARD_HTML.replace("TOKEN_PLACEHOLDER", TOKEN)
+    return HTMLResponse(html)
+
+
 _handler = LegacyRequestHandler(
     agent_executor=HubExecutor(),
     task_store=InMemoryTaskStore(),
@@ -593,6 +804,7 @@ app = Starlette(
             Route("/dashboard/kick/{agent_id}", _dashboard_kick, methods=["POST"]),
             Route("/dashboard/disable/{agent_id}", _dashboard_disable, methods=["POST"]),
             Route("/dashboard/enable/{agent_id}", _dashboard_enable, methods=["POST"]),
+            Route("/dashboard", _dashboard_html),
             Route("/dashboard/events", _dashboard_events),
             Mount("/mcp", app=_mcp_app),
         ]
@@ -620,6 +832,7 @@ if __name__ == "__main__":
     print(f"  {base}/join/{TOKEN}")
     print()
     print("─" * 51)
+    print(f"Dashboard:     {base}/dashboard")
     print(f"MCP endpoint:  {base}/mcp")
     print(f"Agent card:    {base}/.well-known/agent-card.json")
     uvicorn.run(app, host=args.host, port=args.port)
