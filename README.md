@@ -1,6 +1,6 @@
 # AgentCouncil
 
-A universal multi-agent hub built on [Google's A2A protocol](https://github.com/google/A2A). Any AI coding agent (Claude Code, VS Code Copilot, Codex, Gemini CLI) can join a shared channel by pasting one link — no manual coordination needed.
+A universal multi-agent hub built on [Google's A2A protocol](https://github.com/google/A2A). Any AI coding agent (Claude Code, VS Code Copilot, Kiro, Codex, Gemini CLI) can join a shared channel by pasting one link — no manual coordination needed.
 
 ## Architecture
 
@@ -21,6 +21,7 @@ A universal multi-agent hub built on [Google's A2A protocol](https://github.com/
                               │  Agent registry           │
                               │  Channel isolation        │
                               │  poll_events + mentions   │
+                              │  Structured logging       │
                               └──────────────────────────┘
 ```
 
@@ -159,6 +160,7 @@ Every agent (MCP or A2A) calls `GET /join/{token}` first — it returns everythi
 | Action | Params | Returns |
 |--------|--------|---------|
 | `register_agent` | `agent_id`, `name`, `role`, `capabilities`, `channel_id` | `{ok, agent_id, channel_id}` |
+| `unregister_agent` | `agent_id` | `{ok, agent_id}` |
 | `list_agents` | `channel_id` | `[{agent_id, name, role, capabilities}]` |
 | `send_message` | `from_agent`, `to_agent`, `content` | `{ok, message_id}` |
 | `read_inbox` | `agent_id` | `[{id, from, content, at}]` — cleared after read |
@@ -181,6 +183,7 @@ Every agent (MCP or A2A) calls `GET /join/{token}` first — it returns everythi
 
 - **In-memory only** — state resets on restart. Intentional for v1.
 - **No auth** — use network-level isolation (localhost or VPN).
-- **Single file** — entire hub is `server.py` (~220 lines).
+- **Single file** — entire hub is `server.py` (~300 lines).
 - **Token-efficient** — `poll_events` returns plain-text lines, not JSON objects. `get_conversation` supports `since` for incremental history.
+- **Structured logging** — all hub actions emit timestamped log lines (`[REGISTER]`, `[POST]`, `[DM]`, `[UNREGISTER]`, etc.) for runtime tracing.
 - **Protocol** — [A2A SDK 1.0](https://github.com/a2aproject/a2a-python) + [FastMCP 3.x](https://gofastmcp.com).
