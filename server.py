@@ -238,6 +238,12 @@ def _dispatch(data: dict) -> dict | list:
             _agent_colors[agent_id] = _COLORS[len(_agent_colors) % len(_COLORS)]
             role_str = f" as {role}" if role else ""
             _emit(f"{data['name']} joined{role_str}")
+            _dash_emit("agent_joined", {
+                "id": agent_id,
+                "name": data["name"],
+                "role": role,
+                "color": _agent_colors[agent_id],
+            })
             log.info("[REGISTER] agent_id=%s name=%r role=%r channel=%s",
                      agent_id, data["name"], role, data["channel_id"])
             return {"ok": True, "agent_id": agent_id, "channel_id": data["channel_id"]}
@@ -264,6 +270,14 @@ def _dispatch(data: dict) -> dict | list:
                 "at": _now(),
             }
             _inboxes[to].append(msg)
+            _dash_emit("message", {
+                "from": data["from_agent"],
+                "from_id": data["from_agent"],
+                "to": to,
+                "content": data["content"],
+                "at": msg["at"],
+                "color": _agent_colors.get(data["from_agent"], _COLORS[0]),
+            })
             log.info("[DM] from=%s to=%s msg_id=%s content=%r",
                      data["from_agent"], to, msg["id"], data["content"][:120])
             return {"ok": True, "message_id": msg["id"]}
@@ -317,6 +331,14 @@ def _dispatch(data: dict) -> dict | list:
                 _emit(f"{agent_name}: {data['content']}")
                 log.info("[POST] conv_id=%s from=%s (broadcast) content=%r",
                          data["conversation_id"], data["from_agent"], data["content"][:120])
+            _dash_emit("message", {
+                "from": agent_name,
+                "from_id": data["from_agent"],
+                "to": ",".join(mentions) if mentions else "all",
+                "content": data["content"],
+                "at": conv["messages"][-1]["at"],
+                "color": _agent_colors.get(data["from_agent"], _COLORS[0]),
+            })
             return {"ok": True, "total_messages": len(conv["messages"])}
 
         case "get_conversation":
@@ -363,6 +385,7 @@ def _dispatch(data: dict) -> dict | list:
             _agent_colors.pop(agent_id, None)
             _disabled.discard(agent_id)
             _emit(f"{agent_name} left")
+            _dash_emit("agent_left", {"id": agent_id})
             log.info("[UNREGISTER] agent_id=%s name=%r channel=%s", agent_id, agent_name, channel_id)
             return {"ok": True, "agent_id": agent_id}
 
@@ -459,6 +482,69 @@ async def _dashboard_enable(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "agent_id": agent_id})
 
 
+async def _dashboard_events(request: Request):
+    import asyncio
+    import json
+    from starlette.responses import StreamingResponse
+
+    queue: asyncio.Queue = asyncio.Queue()
+    _dash_queues.append(queue)
+
+    channel_id = f"{TOKEN}-general"
+    agents_snapshot = [
+        {
+            "id": aid,
+            "name": info["name"],
+            "role": info.get("role", ""),
+            "color": _agent_colors.get(aid, _COLORS[0]),
+            "disabled": aid in _disabled,
+        }
+        for aid, info in _agents.items()
+        if info["channel_id"] == channel_id
+    ]
+    messages_snapshot = []
+    for conv in _conversations.values():
+        if conv["channel_id"] == channel_id:
+            for m in conv["messages"][-50:]:
+                from_id = m["from"]
+                messages_snapshot.append({
+                    "from": m.get("from_name", from_id),
+                    "from_id": from_id,
+                    "to": ",".join(m.get("mentions", [])) or "all",
+                    "content": m["content"],
+                    "at": m["at"],
+                    "color": _agent_colors.get(from_id, _COLORS[0]),
+                })
+
+    snapshot = json.dumps({
+        "type": "snapshot",
+        "agents": agents_snapshot,
+        "messages": messages_snapshot,
+    })
+
+    async def generator():
+        yield f"data: {snapshot}\n\n"
+        try:
+            while True:
+                data = await asyncio.wait_for(queue.get(), timeout=30)
+                yield f"data: {data}\n\n"
+        except asyncio.TimeoutError:
+            yield 'data: {"type":"ping"}\n\n'
+        except asyncio.CancelledError:
+            pass
+        finally:
+            try:
+                _dash_queues.remove(queue)
+            except ValueError:
+                pass
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 async def _join_handler(request: Request) -> JSONResponse:
     token = request.path_params["token"]
     if token != TOKEN:
@@ -507,6 +593,7 @@ app = Starlette(
             Route("/dashboard/kick/{agent_id}", _dashboard_kick, methods=["POST"]),
             Route("/dashboard/disable/{agent_id}", _dashboard_disable, methods=["POST"]),
             Route("/dashboard/enable/{agent_id}", _dashboard_enable, methods=["POST"]),
+            Route("/dashboard/events", _dashboard_events),
             Mount("/mcp", app=_mcp_app),
         ]
     )
