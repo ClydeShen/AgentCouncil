@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
-
 import pytest
 
-# Add parent directory to path to import server
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from server import TOKEN, _events, _cursors, _emit, _disabled, _agent_colors, _COLORS, _recent_sends
+from agentcouncil.server import TOKEN, _events, _cursors, _emit, _disabled, _agent_colors, _COLORS, _recent_sends
 
 
 def test_token_is_six_chars():
@@ -22,7 +16,7 @@ def test_cursor_store_starts_empty():
     assert isinstance(_cursors, dict)
 
 
-from server import _dispatch, _events, _agents, _conversations
+from agentcouncil.server import _dispatch, _events, _agents, _conversations
 
 
 def setup_function():
@@ -100,7 +94,7 @@ def test_post_with_mentions_emits_mention_event():
 
 
 from starlette.testclient import TestClient
-from server import app, TOKEN, _agents, _inboxes, _conversations, _events, _dispatch
+from agentcouncil.server import app, TOKEN, _agents, _inboxes, _conversations, _events, _dispatch
 
 
 def test_join_invalid_token():
@@ -272,7 +266,7 @@ def test_mcp_endpoint_exists():
 # unregister_agent tests
 # ---------------------------------------------------------------------------
 
-from server import _inboxes, _cursors
+from agentcouncil.server import _inboxes, _cursors
 
 
 def test_unregister_removes_agent():
