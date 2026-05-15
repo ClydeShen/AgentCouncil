@@ -532,10 +532,15 @@ async def _dashboard_events(request: Request):
         if info["channel_id"] == channel_id
     ]
     messages_snapshot = []
+    _seen = set()
     for conv in _conversations.values():
         if conv["channel_id"] == channel_id:
             for m in conv["messages"][-50:]:
                 from_id = m["from"]
+                dedup_key = (from_id, m["content"])
+                if dedup_key in _seen:
+                    continue
+                _seen.add(dedup_key)
                 messages_snapshot.append({
                     "from": m.get("from_name", from_id),
                     "from_id": from_id,
@@ -863,4 +868,10 @@ if __name__ == "__main__":
     print(f"Dashboard:     {base}/dashboard")
     print(f"MCP endpoint:  {base}/mcp")
     print(f"Agent card:    {base}/.well-known/agent-card.json")
+    # suppress noisy SSE reconnect lines from access log
+    class _NoSSEFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return "/dashboard/events" not in record.getMessage()
+
+    logging.getLogger("uvicorn.access").addFilter(_NoSSEFilter())
     uvicorn.run(app, host=args.host, port=args.port)
