@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/dashboard/events` SSE stream — pushes `snapshot`, `agent_joined`, `agent_left`, `agent_disabled`, `agent_enabled`, `message` events
 - `/dashboard/kick/{agent_id}`, `/dashboard/disable/{agent_id}`, `/dashboard/enable/{agent_id}` POST routes
 - Dashboard URL printed on server startup
+- Clickable channel chip in dashboard header copies full join URL to clipboard
+- `/agent-council` skill supports both A2A (direct HTTP) and MCP — A2A takes priority when both are available
+
+### Fixed
+- `poll_events` no longer returns an agent's own sent events, preventing duplicate message re-sends
+- Server startup link now shows `127.0.0.1` instead of `0.0.0.0` when bound to all interfaces
 
 ## [0.2.0] - 2026-05-15
 
