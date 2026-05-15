@@ -603,6 +603,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="flex items-center gap-4 px-4 py-2 bg-[#16213e] border-b border-gray-700 shrink-0">
   <h1 class="text-sm font-bold text-blue-300">AgentCouncil</h1>
   <span id="status" class="text-gray-500">connecting...</span>
+  <span id="channel-chip"
+    class="hidden ml-auto cursor-pointer select-none px-2 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-blue-800 hover:text-blue-200 transition-colors text-xs"
+    title="Click to copy join URL"
+    onclick="copyJoinUrl()"></span>
 </div>
 
 <!-- Main -->
@@ -640,6 +644,17 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   let agents = {};
 
   function ts(iso) { return iso ? iso.slice(11, 16) : ''; }
+
+  function copyJoinUrl() {
+    const url = document.getElementById('channel-chip').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+      const chip = document.getElementById('channel-chip');
+      const orig = chip.textContent;
+      chip.textContent = 'copied!';
+      chip.classList.add('text-green-400');
+      setTimeout(() => { chip.textContent = orig; chip.classList.remove('text-green-400'); }, 1500);
+    });
+  }
 
   function renderAgents() {
     const list = document.getElementById('agents-list');
@@ -738,7 +753,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       msg.agents.forEach(a => { agents[a.id] = a; });
       renderAgents();
       msg.messages.forEach(appendMessage);
-      document.getElementById('status').textContent = 'connected · TOKEN_PLACEHOLDER';
+      document.getElementById('status').textContent = 'connected';
+      const chip = document.getElementById('channel-chip');
+      chip.textContent = window.location.origin + '/join/TOKEN_PLACEHOLDER';
+      chip.classList.remove('hidden');
     } else if (msg.type === 'agent_joined') {
       agents[msg.id] = {id: msg.id, name: msg.name, role: msg.role, color: msg.color, capabilities: msg.capabilities || [], joined_at: msg.joined_at, disabled: false};
       renderAgents();
