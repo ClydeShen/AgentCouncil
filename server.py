@@ -72,6 +72,14 @@ _events: list[str] = []
 _cursors: dict[str, int] = {}
 # agent_id -> last event index delivered via poll_events
 
+_disabled: set[str] = set()
+_agent_colors: dict[str, str] = {}
+_COLORS: list[str] = [
+    "#e74c3c", "#3498db", "#2ecc71", "#f39c12",
+    "#9b59b6", "#1abc9c", "#e67e22", "#e91e63",
+]
+_dash_queues: list = []
+
 
 def _emit(event: str) -> None:
     _events.append(event)
@@ -216,6 +224,7 @@ def _dispatch(data: dict) -> dict | list:
                 "registered_at": _now(),
             }
             _inboxes.setdefault(agent_id, [])
+            _agent_colors[agent_id] = _COLORS[len(_agent_colors) % len(_COLORS)]
             role_str = f" as {role}" if role else ""
             _emit(f"{data['name']} joined{role_str}")
             log.info("[REGISTER] agent_id=%s name=%r role=%r channel=%s",
@@ -331,6 +340,8 @@ def _dispatch(data: dict) -> dict | list:
             del _agents[agent_id]
             _inboxes.pop(agent_id, None)
             _cursors.pop(agent_id, None)
+            _agent_colors.pop(agent_id, None)
+            _disabled.discard(agent_id)
             _emit(f"{agent_name} left")
             log.info("[UNREGISTER] agent_id=%s name=%r channel=%s", agent_id, agent_name, channel_id)
             return {"ok": True, "agent_id": agent_id}

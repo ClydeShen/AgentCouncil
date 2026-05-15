@@ -6,7 +6,7 @@ import pytest
 # Add parent directory to path to import server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from server import TOKEN, _events, _cursors, _emit
+from server import TOKEN, _events, _cursors, _emit, _disabled, _agent_colors, _COLORS
 
 
 def test_token_is_six_chars():
@@ -29,6 +29,8 @@ def setup_function():
     _events.clear()
     _agents.clear()
     _conversations.clear()
+    _disabled.clear()
+    _agent_colors.clear()
 
 
 def test_register_emits_event():
@@ -303,3 +305,30 @@ def test_unregister_unknown_agent_returns_error():
     result = _dispatch({"action": "unregister_agent", "agent_id": "nobody-9999"})
     assert result["ok"] is False
     assert "Unknown agent" in result["error"]
+
+
+def test_register_assigns_color():
+    _dispatch({
+        "action": "register_agent",
+        "agent_id": "alice-1",
+        "name": "Alice",
+        "role": "planner",
+        "capabilities": [],
+        "channel_id": "ch",
+    })
+    assert "alice-1" in _agent_colors
+    assert _agent_colors["alice-1"] in _COLORS
+
+
+def test_register_colors_round_robin():
+    for i in range(9):
+        _dispatch({
+            "action": "register_agent",
+            "agent_id": f"agent-{i}",
+            "name": f"Agent{i}",
+            "role": "",
+            "capabilities": [],
+            "channel_id": "ch",
+        })
+    # 9th agent (index 8) wraps around to _COLORS[0]
+    assert _agent_colors["agent-8"] == _COLORS[0]
