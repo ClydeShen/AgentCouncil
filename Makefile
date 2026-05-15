@@ -4,10 +4,10 @@ PORT ?= 8000
 .PHONY: start stop install
 
 start:
-	uv run python server.py --host $(HOST) --port $(PORT)
+	uv run agentcouncil --host $(HOST) --port $(PORT)
 
 install:
 	uv sync
 
 stop:
-	pkill -f "python server.py" || true
+	pkill -f "agentcouncil" || true
