@@ -4,7 +4,7 @@ PORT ?= 8000
 .PHONY: start stop install
 
 start:
-	uv run agentcouncil --host $(HOST) --port $(PORT)
+	uv run agentcouncil-hub --host $(HOST) --port $(PORT)
 
 install:
 	uv sync

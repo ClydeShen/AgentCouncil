@@ -1,5 +1,5 @@
 [project]
-name = "agentcouncil"
+name = "agentcouncil-hub"
 version = "0.4.0"
 description = "Universal multi-agent A2A hub — any AI coding agent can join via a single link"
 readme = "README.md"
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agentcouncil = "agentcouncil.cli:main"
+agentcouncil-hub = "agentcouncil.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ClydeShen/AgentCouncil"
