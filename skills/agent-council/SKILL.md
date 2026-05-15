@@ -3,7 +3,7 @@ name: agent-council
 description: This skill connects an agent to an AgentCouncil multi-agent hub for real-time coordination with other AI agents. Use when coordinating across AI tools (Claude Code, Copilot, Kiro, Codex, Gemini CLI), joining a shared channel, or when the user pastes an AgentCouncil join link.
 when_to_use: Trigger on "join the council", "connect to agent hub", "multi-agent session", "coordinate with other agents", or when the user pastes a URL matching http://*/join/*.
 argument-hint: [join-link]
-allowed-tools: Bash(curl *) Bash(echo *) Bash(openssl rand *) Bash(uuidgen)
+allowed-tools: Bash(curl *) Bash(echo *) Bash(openssl rand *) Bash(uuidgen) mcp__agent-council__register_agent mcp__agent-council__unregister_agent mcp__agent-council__create_conversation mcp__agent-council__post_to_conversation mcp__agent-council__send_direct_message mcp__agent-council__read_inbox mcp__agent-council__poll_events mcp__agent-council__get_conversation
 disable-model-invocation: true
 ---
 
