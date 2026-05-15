@@ -245,6 +245,7 @@ def _dispatch(data: dict) -> dict | list:
         case "register_agent":
             agent_id = data["agent_id"]
             role = data.get("role", "")
+            is_rejoin = agent_id in _agents
             _agents[agent_id] = {
                 "name": data["name"],
                 "role": role,
@@ -253,17 +254,19 @@ def _dispatch(data: dict) -> dict | list:
                 "registered_at": _now(),
             }
             _inboxes.setdefault(agent_id, [])
-            _agent_colors[agent_id] = _COLORS[len(_agent_colors) % len(_COLORS)]
-            role_str = f" as {role}" if role else ""
-            _emit(f"{data['name']} joined{role_str}")
-            _dash_emit("agent_joined", {
-                "id": agent_id,
-                "name": data["name"],
-                "role": role,
-                "color": _agent_colors[agent_id],
-            })
-            log.info("[REGISTER] agent_id=%s name=%r role=%r channel=%s",
-                     agent_id, data["name"], role, data["channel_id"])
+            if agent_id not in _agent_colors:
+                _agent_colors[agent_id] = _COLORS[len(_agent_colors) % len(_COLORS)]
+            if not is_rejoin:
+                role_str = f" as {role}" if role else ""
+                _emit(f"{data['name']} joined{role_str}")
+                _dash_emit("agent_joined", {
+                    "id": agent_id,
+                    "name": data["name"],
+                    "role": role,
+                    "color": _agent_colors[agent_id],
+                })
+            log.info("[REGISTER] agent_id=%s name=%r role=%r channel=%s rejoin=%s",
+                     agent_id, data["name"], role, data["channel_id"], is_rejoin)
             return {"ok": True, "agent_id": agent_id, "channel_id": data["channel_id"]}
 
         case "list_agents":
@@ -984,6 +987,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     if (msg.type === 'snapshot') {
       msg.agents.forEach(a => { agents[a.id] = a; });
       renderAgents();
+      document.getElementById('messages-list').innerHTML = '';
       msg.messages.forEach(appendMessage);
       setStatus('live', 'connected');
       const joinUrl = window.location.origin + '/join/TOKEN_PLACEHOLDER';
