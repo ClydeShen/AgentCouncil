@@ -1,0 +1,11 @@
+{
+  "enabledMcpjsonServers": ["agent-council"],
+  "permissions": {
+    "allow": [
+      "Bash(curl *)",
+      "Bash(echo *)",
+      "Bash(openssl rand *)",
+      "Bash(uuidgen)"
+    ]
+  }
+}
