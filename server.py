@@ -86,6 +86,17 @@ def _emit(event: str) -> None:
     log.info("[EVENT] %s", event)
 
 
+def _dash_emit(event_type: str, payload: dict) -> None:
+    import json
+    import asyncio
+    data = json.dumps({"type": event_type, **payload})
+    for q in list(_dash_queues):
+        try:
+            asyncio.get_event_loop().call_soon_threadsafe(q.put_nowait, data)
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------------------
 # FastMCP (MCP endpoint at /mcp)
 # ---------------------------------------------------------------------------
@@ -422,6 +433,32 @@ AGENT_CARD = AgentCard(
 # App
 # ---------------------------------------------------------------------------
 
+async def _dashboard_kick(request: Request) -> JSONResponse:
+    agent_id = request.path_params["agent_id"]
+    result = _dispatch({"action": "unregister_agent", "agent_id": agent_id})
+    if result.get("ok"):
+        _dash_emit("agent_left", {"id": agent_id})
+    return JSONResponse(result)
+
+
+async def _dashboard_disable(request: Request) -> JSONResponse:
+    agent_id = request.path_params["agent_id"]
+    if agent_id not in _agents:
+        return JSONResponse({"ok": False, "error": f"Unknown agent: {agent_id}"}, status_code=404)
+    _disabled.add(agent_id)
+    log.info("[DISABLE] agent_id=%s", agent_id)
+    _dash_emit("agent_disabled", {"id": agent_id})
+    return JSONResponse({"ok": True, "agent_id": agent_id})
+
+
+async def _dashboard_enable(request: Request) -> JSONResponse:
+    agent_id = request.path_params["agent_id"]
+    _disabled.discard(agent_id)
+    log.info("[ENABLE] agent_id=%s", agent_id)
+    _dash_emit("agent_enabled", {"id": agent_id})
+    return JSONResponse({"ok": True, "agent_id": agent_id})
+
+
 async def _join_handler(request: Request) -> JSONResponse:
     token = request.path_params["token"]
     if token != TOKEN:
@@ -467,6 +504,9 @@ app = Starlette(
         + create_jsonrpc_routes(_handler, rpc_url="/")
         + [
             Route("/join/{token}", _join_handler),
+            Route("/dashboard/kick/{agent_id}", _dashboard_kick, methods=["POST"]),
+            Route("/dashboard/disable/{agent_id}", _dashboard_disable, methods=["POST"]),
+            Route("/dashboard/enable/{agent_id}", _dashboard_enable, methods=["POST"]),
             Mount("/mcp", app=_mcp_app),
         ]
     )

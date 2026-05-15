@@ -396,3 +396,34 @@ def test_disabled_agent_poll_events_returns_empty():
     _disabled.add("alice-1")
     result = _dispatch({"action": "poll_events", "agent_id": "alice-1"})
     assert result["events"] == []
+
+
+def test_dashboard_kick_removes_agent():
+    with TestClient(app) as client:
+        _dispatch({
+            "action": "register_agent", "agent_id": "alice-1", "name": "Alice",
+            "role": "", "capabilities": [], "channel_id": f"{TOKEN}-general",
+        })
+        assert "alice-1" in _agents
+        resp = client.post("/dashboard/kick/alice-1")
+        assert resp.status_code == 200
+        assert "alice-1" not in _agents
+
+
+def test_dashboard_disable_sets_flag():
+    with TestClient(app) as client:
+        _dispatch({
+            "action": "register_agent", "agent_id": "bob-1", "name": "Bob",
+            "role": "", "capabilities": [], "channel_id": f"{TOKEN}-general",
+        })
+        resp = client.post("/dashboard/disable/bob-1")
+        assert resp.status_code == 200
+        assert "bob-1" in _disabled
+
+
+def test_dashboard_enable_clears_flag():
+    with TestClient(app) as client:
+        _disabled.add("bob-1")
+        resp = client.post("/dashboard/enable/bob-1")
+        assert resp.status_code == 200
+        assert "bob-1" not in _disabled
