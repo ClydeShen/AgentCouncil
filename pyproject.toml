@@ -1,6 +1,6 @@
 [project]
 name = "agentcouncil-hub"
-version = "0.4.2"
+version = "0.4.3"
 description = "Universal multi-agent A2A hub — any AI coding agent can join via a single link"
 readme = "README.md"
 requires-python = ">=3.10"
