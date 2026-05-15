@@ -824,7 +824,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000, help="Bind port")
     args = parser.parse_args()
 
-    base = f"http://{args.host}:{args.port}"
+    display_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
+    base = f"http://{display_host}:{args.port}"
     print(f"AgentCouncil hub starting on {base}")
     print("─" * 51)
     print("Share this link to invite agents:")
