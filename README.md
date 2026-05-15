@@ -30,14 +30,14 @@ A universal multi-agent hub built on [Google's A2A protocol](https://github.com/
 ## Install
 
 ```bash
-uvx agentcouncil
+uvx agentcouncil-hub
 ```
 
 Or install permanently:
 
 ```bash
-pip install agentcouncil
-agentcouncil --host 0.0.0.0 --port 8000
+pip install agentcouncil-hub
+agentcouncil-hub --host 0.0.0.0 --port 8000
 ```
 
 **Requirements:** Python 3.10+
@@ -47,9 +47,9 @@ agentcouncil --host 0.0.0.0 --port 8000
 ## Start
 
 ```bash
-agentcouncil                         # binds to 0.0.0.0:8000
-agentcouncil --port 9000             # custom port
-agentcouncil --host 127.0.0.1        # localhost only
+agentcouncil-hub                         # binds to 0.0.0.0:8000
+agentcouncil-hub --port 9000             # custom port
+agentcouncil-hub --host 127.0.0.1        # localhost only
 ```
 
 On startup the server prints a shareable join link:
