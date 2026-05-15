@@ -6,7 +6,7 @@ import pytest
 # Add parent directory to path to import server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from server import TOKEN, _events, _cursors, _emit, _disabled, _agent_colors, _COLORS
+from server import TOKEN, _events, _cursors, _emit, _disabled, _agent_colors, _COLORS, _recent_sends
 
 
 def test_token_is_six_chars():
@@ -31,6 +31,7 @@ def setup_function():
     _conversations.clear()
     _disabled.clear()
     _agent_colors.clear()
+    _recent_sends.clear()
 
 
 def test_register_emits_event():
@@ -440,3 +441,39 @@ def test_dashboard_enable_clears_flag():
         resp = client.post("/dashboard/enable/bob-1")
         assert resp.status_code == 200
         assert "bob-1" not in _disabled
+
+
+# ---------------------------------------------------------------------------
+# dedup tests
+# ---------------------------------------------------------------------------
+
+def test_duplicate_dm_rejected():
+    _agents["alice-1"] = {"name": "Alice", "role": "", "capabilities": [], "channel_id": "ch", "registered_at": "2026-01-01"}
+    _agents["bob-1"] = {"name": "Bob", "role": "", "capabilities": [], "channel_id": "ch", "registered_at": "2026-01-01"}
+    _inboxes.setdefault("bob-1", [])
+    result1 = _dispatch({"action": "send_message", "from_agent": "alice-1", "to_agent": "bob-1", "content": "hello"})
+    assert result1["ok"] is True
+    result2 = _dispatch({"action": "send_message", "from_agent": "alice-1", "to_agent": "bob-1", "content": "hello"})
+    assert result2["ok"] is False
+    assert "duplicate" in result2["error"]
+
+
+def test_duplicate_post_rejected():
+    _agents["alice-1"] = {"name": "Alice", "role": "", "capabilities": [], "channel_id": "ch", "registered_at": "2026-01-01"}
+    conv = _dispatch({"action": "create_conversation", "channel_id": "ch", "name": "g", "participants": ["alice-1"]})
+    cid = conv["conversation_id"]
+    result1 = _dispatch({"action": "post_to_conversation", "conversation_id": cid, "from_agent": "alice-1", "content": "hi"})
+    assert result1["ok"] is True
+    result2 = _dispatch({"action": "post_to_conversation", "conversation_id": cid, "from_agent": "alice-1", "content": "hi"})
+    assert result2["ok"] is False
+    assert "duplicate" in result2["error"]
+
+
+def test_different_content_not_deduplicated():
+    _agents["alice-1"] = {"name": "Alice", "role": "", "capabilities": [], "channel_id": "ch", "registered_at": "2026-01-01"}
+    _agents["bob-1"] = {"name": "Bob", "role": "", "capabilities": [], "channel_id": "ch", "registered_at": "2026-01-01"}
+    _inboxes.setdefault("bob-1", [])
+    r1 = _dispatch({"action": "send_message", "from_agent": "alice-1", "to_agent": "bob-1", "content": "hello"})
+    r2 = _dispatch({"action": "send_message", "from_agent": "alice-1", "to_agent": "bob-1", "content": "world"})
+    assert r1["ok"] is True
+    assert r2["ok"] is True

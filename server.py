@@ -73,6 +73,9 @@ _cursors: dict[str, int] = {}
 # agent_id -> last event index delivered via poll_events
 
 _disabled: set[str] = set()
+_recent_sends: dict[tuple, float] = {}
+# (from_agent, target, content) → timestamp; used to deduplicate repeated sends within 10s
+_DEDUP_TTL: float = 10.0
 _agent_colors: dict[str, str] = {}
 _COLORS: list[str] = [
     "#e74c3c", "#3498db", "#2ecc71", "#f39c12",
@@ -217,6 +220,21 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _check_dedup(from_agent: str, target: str, content: str) -> bool:
+    """Return True if this (from, target, content) was already sent within _DEDUP_TTL seconds."""
+    import time
+    key = (from_agent, target, content)
+    now = time.monotonic()
+    # expire old entries
+    expired = [k for k, ts in _recent_sends.items() if now - ts > _DEDUP_TTL]
+    for k in expired:
+        del _recent_sends[k]
+    if key in _recent_sends:
+        return True
+    _recent_sends[key] = now
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Action dispatcher
 # ---------------------------------------------------------------------------
@@ -259,6 +277,8 @@ def _dispatch(data: dict) -> dict | list:
         case "send_message":
             if data["from_agent"] in _disabled:
                 return {"ok": False, "error": "agent disabled"}
+            if _check_dedup(data["from_agent"], data["to_agent"], data["content"]):
+                return {"ok": False, "error": "duplicate message — same content sent within 10s"}
             to = data["to_agent"]
             if to not in _agents:
                 log.warning("[DM] unknown recipient agent_id=%s from=%s", to, data["from_agent"])
@@ -308,6 +328,8 @@ def _dispatch(data: dict) -> dict | list:
         case "post_to_conversation":
             if data["from_agent"] in _disabled:
                 return {"ok": False, "error": "agent disabled"}
+            if _check_dedup(data["from_agent"], data["conversation_id"], data["content"]):
+                return {"ok": False, "error": "duplicate message — same content sent within 10s"}
             conv = _conversations.get(data["conversation_id"])
             if not conv:
                 log.warning("[POST] conversation not found conv_id=%s from=%s",
@@ -389,6 +411,8 @@ def _dispatch(data: dict) -> dict | list:
             _cursors.pop(agent_id, None)
             _agent_colors.pop(agent_id, None)
             _disabled.discard(agent_id)
+            for k in [k for k in _recent_sends if k[0] == agent_id]:
+                del _recent_sends[k]
             _emit(f"{agent_name} left")
             _dash_emit("agent_left", {"id": agent_id})
             log.info("[UNREGISTER] agent_id=%s name=%r channel=%s", agent_id, agent_name, channel_id)
