@@ -332,3 +332,67 @@ def test_register_colors_round_robin():
         })
     # 9th agent (index 8) wraps around to _COLORS[0]
     assert _agent_colors["agent-8"] == _COLORS[0]
+
+
+def test_disabled_agent_cannot_post():
+    _dispatch({
+        "action": "register_agent", "agent_id": "alice-1", "name": "Alice",
+        "role": "", "capabilities": [], "channel_id": "ch",
+    })
+    conv = _dispatch({
+        "action": "create_conversation", "channel_id": "ch",
+        "name": "general", "participants": ["alice-1"],
+    })
+    _disabled.add("alice-1")
+    result = _dispatch({
+        "action": "post_to_conversation",
+        "conversation_id": conv["conversation_id"],
+        "from_agent": "alice-1",
+        "content": "hello",
+        "mentions": [],
+    })
+    assert result.get("ok") is False
+    assert "disabled" in result.get("error", "")
+
+
+def test_disabled_agent_cannot_send_dm():
+    _dispatch({
+        "action": "register_agent", "agent_id": "alice-1", "name": "Alice",
+        "role": "", "capabilities": [], "channel_id": "ch",
+    })
+    _dispatch({
+        "action": "register_agent", "agent_id": "bob-1", "name": "Bob",
+        "role": "", "capabilities": [], "channel_id": "ch",
+    })
+    _disabled.add("alice-1")
+    result = _dispatch({
+        "action": "send_message",
+        "from_agent": "alice-1",
+        "to_agent": "bob-1",
+        "content": "hello",
+    })
+    assert result.get("ok") is False
+    assert "disabled" in result.get("error", "")
+
+
+def test_disabled_agent_read_inbox_returns_empty():
+    _dispatch({
+        "action": "register_agent", "agent_id": "alice-1", "name": "Alice",
+        "role": "", "capabilities": [], "channel_id": "ch",
+    })
+    _inboxes["alice-1"] = [{"id": "x", "from": "b", "content": "hi", "at": "now"}]
+    _disabled.add("alice-1")
+    result = _dispatch({"action": "read_inbox", "agent_id": "alice-1"})
+    assert result == []
+    assert _inboxes.get("alice-1") == []
+
+
+def test_disabled_agent_poll_events_returns_empty():
+    _dispatch({
+        "action": "register_agent", "agent_id": "alice-1", "name": "Alice",
+        "role": "", "capabilities": [], "channel_id": "ch",
+    })
+    _emit("some event")
+    _disabled.add("alice-1")
+    result = _dispatch({"action": "poll_events", "agent_id": "alice-1"})
+    assert result["events"] == []

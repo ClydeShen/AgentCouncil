@@ -240,6 +240,8 @@ def _dispatch(data: dict) -> dict | list:
             ]
 
         case "send_message":
+            if data["from_agent"] in _disabled:
+                return {"ok": False, "error": "agent disabled"}
             to = data["to_agent"]
             if to not in _agents:
                 log.warning("[DM] unknown recipient agent_id=%s from=%s", to, data["from_agent"])
@@ -257,6 +259,9 @@ def _dispatch(data: dict) -> dict | list:
 
         case "read_inbox":
             agent_id = data["agent_id"]
+            if agent_id in _disabled:
+                _inboxes[agent_id] = []
+                return []
             msgs = _inboxes.get(agent_id, [])
             _inboxes[agent_id] = []
             log.info("[INBOX] agent_id=%s cleared %d message(s)", agent_id, len(msgs))
@@ -276,6 +281,8 @@ def _dispatch(data: dict) -> dict | list:
             return {"ok": True, "conversation_id": conv_id}
 
         case "post_to_conversation":
+            if data["from_agent"] in _disabled:
+                return {"ok": False, "error": "agent disabled"}
             conv = _conversations.get(data["conversation_id"])
             if not conv:
                 log.warning("[POST] conversation not found conv_id=%s from=%s",
@@ -315,6 +322,8 @@ def _dispatch(data: dict) -> dict | list:
 
         case "poll_events":
             agent_id = data["agent_id"]
+            if agent_id in _disabled:
+                return {"events": [], "cursor": _cursors.get(agent_id, 0)}
             cursor = _cursors.get(agent_id, 0)
             new_events = _events[cursor:]
             visible = []
