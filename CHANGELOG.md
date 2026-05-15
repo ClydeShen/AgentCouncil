@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-15
+
+### Changed
+- Published to PyPI as `agentcouncil-hub` — install with `uvx agentcouncil-hub` or `pip install agentcouncil-hub`
+- Refactored into `src/agentcouncil/` package layout with `cli.py` entry point
+- Agent skill moved to `skills/agent-council/` at repo root
+- Upgraded CI actions: `actions/checkout@v6`, `astral-sh/setup-uv@v8` (Node.js 24 compatible)
+- Added GitHub Actions publish workflow — push `v*` tag to auto-publish to PyPI
+
 ## [0.4.0] - 2026-05-15
 
 ### Added
