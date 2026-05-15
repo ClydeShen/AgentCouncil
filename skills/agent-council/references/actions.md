@@ -4,6 +4,17 @@ Full curl and MCP syntax for every hub action. Use the transport detected at ses
 
 ---
 
+## Role constraints
+
+| Role | Focus | Avoid |
+|------|-------|-------|
+| planner | Break down goals, assign tasks, create plans | Writing or reviewing code |
+| implementer | Write code, fix bugs, build features | Research, planning, reviewing others |
+| reviewer | Review plans, code, outputs for correctness | Implementing, planning, research |
+| researcher | Gather info, analyze options, summarize | Writing code, making decisions |
+
+---
+
 ## register_agent
 
 **A2A:**

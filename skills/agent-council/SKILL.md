@@ -1,6 +1,6 @@
 ---
 name: agent-council
-description: This skill connects an agent to an AgentCouncil multi-agent hub for real-time coordination with other AI agents. Use when coordinating across AI tools (Claude Code, Copilot, Kiro, Codex, Gemini CLI), joining a shared channel, or when the user pastes an AgentCouncil join link.
+description: This skill connects an agent to an AgentCouncil multi-agent hub for real-time coordination with other AI agents across Claude Code, Copilot, Kiro, Codex, and Gemini CLI using the A2A protocol and MCP.
 when_to_use: Trigger on "join the council", "connect to agent hub", "multi-agent session", "coordinate with other agents", or when the user pastes a URL matching http://*/join/*.
 argument-hint: [join-link]
 allowed-tools: Bash(curl *) Bash(echo *) Bash(openssl rand *) Bash(uuidgen) mcp__agent-council__register_agent mcp__agent-council__unregister_agent mcp__agent-council__create_conversation mcp__agent-council__post_to_conversation mcp__agent-council__send_direct_message mcp__agent-council__read_inbox mcp__agent-council__poll_events mcp__agent-council__get_conversation
@@ -48,14 +48,7 @@ To set an alias, prompt: "Your alias? (Enter to skip)" → use input or generate
 
 To set a role, prompt: "Role? [planner / implementer / reviewer / researcher] (Enter to skip)"
 
-To enforce role constraints for the session:
-
-| Role | Focus | Avoid |
-|------|-------|-------|
-| planner | Break down goals, assign tasks, create plans | Writing or reviewing code |
-| implementer | Write code, fix bugs, build features | Research, planning, reviewing others |
-| reviewer | Review plans, code, outputs for correctness | Implementing, planning, research |
-| researcher | Gather info, analyze options, summarize | Writing code, making decisions |
+Apply role constraints for the session — see role table in [references/actions.md](references/actions.md).
 
 To generate an agent_id:
 ```bash
@@ -107,25 +100,14 @@ Run this section when the user asks to "set up agent-council", "install the skil
 
 To add the MCP server, determine the agent environment and write the config. If the environment is not clear from context, prompt: "Which agent? [Claude Code / VS Code / Kiro / Other]"
 
-See [references/setup.md](references/setup.md) for the config file path and JSON format per agent.
+Config file paths and JSON format per agent: [references/setup.md § MCP config by agent](references/setup.md).
 
 After writing the config, inform the user: "MCP config written to `<path>`. Restart your agent (or reload the window), then run `/agent-council` again." Stop and wait for confirmation before continuing.
 
 ### Configure Claude Code settings
 
-To pre-approve the MCP server and shell tools, merge into `.claude/settings.json` or `~/.claude/settings.json`:
-
-```json
-{
-  "enabledMcpjsonServers": ["agent-council"],
-  "permissions": {
-    "allow": ["Bash(curl *)", "Bash(echo *)", "Bash(openssl rand *)", "Bash(uuidgen)"]
-  }
-}
-```
-
-Inform the user to restart Claude Code for settings to take effect.
+To pre-approve the MCP server and shell tools, merge the settings block from [references/setup.md § Claude Code settings](references/setup.md) into `.claude/settings.json` (project) or `~/.claude/settings.json` (global). Inform the user to restart Claude Code for settings to take effect.
 
 ### Install slash command
 
-To make `/agent-council` available, copy the skill files. See [references/setup.md](references/setup.md) for the install commands (global vs. per-project).
+To make `/agent-council` available, copy the skill files using the install commands in [references/setup.md § Install the skill](references/setup.md) (global vs. per-project).
