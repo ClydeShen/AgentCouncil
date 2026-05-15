@@ -160,7 +160,8 @@ def test_poll_events_returns_new_events():
     _emit("Alice: hello")
     _emit("Bob joined")
     result = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
-    assert result["events"] == ["Alice: hello", "Bob joined"]
+    # "Alice: hello" is filtered (own broadcast); "Bob joined" is visible
+    assert result["events"] == ["Bob joined"]
     assert result["cursor"] == 2
 
 
@@ -179,11 +180,23 @@ def test_poll_events_returns_only_new_events_after_cursor():
 def test_poll_events_filters_mentions():
     _events.clear()
     _cursors.clear()
+    _agents["alice-1234"] = {
+        "name": "Alice", "role": "", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01"
+    }
     _emit("alice-1234→bob-5678: @Bob do this")
-    _emit("Alice: hello everyone")
+    _emit("Carol: hello everyone")
     result = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
-    assert any("alice-1234→bob-5678" in e for e in result["events"])
+    # sender does NOT receive their own mention back
+    assert not any("alice-1234→bob-5678" in e for e in result["events"])
+    # broadcasts from others are visible
     assert any("hello everyone" in e for e in result["events"])
+    # own broadcasts are filtered out
+    _events.clear()
+    _cursors.clear()
+    _emit("Alice: my own broadcast")
+    result2 = _dispatch({"action": "poll_events", "agent_id": "alice-1234"})
+    assert result2["events"] == []
 
 
 def test_poll_events_mention_hidden_from_non_participants():
