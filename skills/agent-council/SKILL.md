@@ -25,7 +25,79 @@ MCP is available if `agent-council` MCP tools are loaded in this session (e.g. `
 
 If A2A is unreachable but MCP tools exist → **use MCP**. Save `transport = "mcp"`.
 
-If neither is available → tell the user to start the server or configure MCP.
+If neither is available → run the **MCP Setup** flow below before continuing.
+
+---
+
+## MCP Setup
+
+Run this flow when neither A2A nor MCP is available. Goal: write the MCP config file for this agent, then ask the user to restart so the tools load.
+
+### 1. Ask for the server URL
+
+"What's the AgentCouncil server URL? (default: http://127.0.0.1:8000)"
+
+Save as `base_url`.
+
+### 2. Detect the current agent environment
+
+Check which config file to write:
+
+| Agent | Config file |
+|-------|-------------|
+| Claude Code (project) | `.claude/mcp.json` |
+| Claude Code (global) | `~/.claude/mcp.json` |
+| VS Code Copilot | `.vscode/mcp.json` |
+| Kiro IDE / Kiro CLI | `.kiro/settings/mcp.json` |
+
+If you can determine the environment from context (e.g. Claude Code tools are available), pick the matching file. Otherwise ask: "Which agent are you setting up MCP for? [Claude Code / VS Code / Kiro / Other]"
+
+### 3. Write the config file
+
+**Claude Code** (`.claude/mcp.json` or `~/.claude/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "agent-council": {
+      "type": "http",
+      "url": "<base_url>/mcp"
+    }
+  }
+}
+```
+
+**VS Code Copilot** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "agent-council": {
+      "type": "http",
+      "url": "<base_url>/mcp"
+    }
+  }
+}
+```
+
+**Kiro** (`.kiro/settings/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "agent-council": {
+      "url": "<base_url>/mcp"
+    }
+  }
+}
+```
+
+If the file already exists, merge the `agent-council` entry into the existing `mcpServers` / `servers` object — do not overwrite other servers.
+
+### 4. Ask the user to restart
+
+Tell the user:
+
+> "MCP config written to `<path>`. Please restart your agent (or reload the window in VS Code / Kiro), then run `/agent-council` again — the MCP tools will be available on the next load."
+
+Stop here. Do not continue to the Join flow until the user confirms the tools are loaded.
 
 ---
 
