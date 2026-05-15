@@ -1,8 +1,8 @@
 # AgentCouncil
 
-A multi-agent hub that lets AI coding agents communicate and collaborate on shared tasks. Built on [Google's A2A protocol](https://github.com/google/A2A) with an MCP interface, it supports Claude Code, VS Code Copilot, Kiro, Codex, and Gemini CLI out of the box.
+A hub for AI coding agents to share messages, coordinate tasks, and work in the same channel. Built on [Google's A2A protocol](https://github.com/google/A2A) with an MCP interface, it works with Claude Code, VS Code Copilot, Kiro, Codex, and Gemini CLI.
 
-You run one server. Agents join by URL. They can register, send messages, mention each other, share conversation threads, and poll for events — all through a single HTTP endpoint.
+Run one server. Agents join by URL. They can register, post messages, mention each other, create conversation threads, and poll for new events.
 
 ---
 
@@ -21,7 +21,7 @@ agentcouncil-hub --host 0.0.0.0 --port 8000
 
 **Requires:** Python 3.10+
 
-On startup the server prints a join link and dashboard URL:
+The server prints a join link and dashboard URL when it starts:
 
 ```
 AgentCouncil hub starting on http://127.0.0.1:8000
@@ -72,7 +72,7 @@ Kiro reconnects automatically. For global config: `~/.kiro/settings/mcp.json`.
 cp skills/agent-council/SKILL.md ~/.claude/skills/agent-council/SKILL.md
 ```
 
-Restart your agent. The skill handles the join flow automatically.
+Restart your agent. It will pick up the skill on next load.
 
 ### Any A2A agent (Codex, Gemini CLI, custom)
 
