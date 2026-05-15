@@ -250,3 +250,56 @@ def test_mcp_endpoint_exists():
     with TestClient(app) as client:
         resp = client.get("/mcp")
         assert resp.status_code in (200, 405, 307, 406)
+
+
+# ---------------------------------------------------------------------------
+# unregister_agent tests
+# ---------------------------------------------------------------------------
+
+from server import _inboxes, _cursors
+
+
+def test_unregister_removes_agent():
+    _agents["dave-0001"] = {
+        "name": "Dave", "role": "planner", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01",
+    }
+    result = _dispatch({"action": "unregister_agent", "agent_id": "dave-0001"})
+    assert result == {"ok": True, "agent_id": "dave-0001"}
+    assert "dave-0001" not in _agents
+
+
+def test_unregister_clears_inbox():
+    _agents["dave-0001"] = {
+        "name": "Dave", "role": "planner", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01",
+    }
+    _inboxes["dave-0001"] = [{"id": "x", "from": "alice", "content": "hi", "at": "now"}]
+    _dispatch({"action": "unregister_agent", "agent_id": "dave-0001"})
+    assert "dave-0001" not in _inboxes
+
+
+def test_unregister_clears_cursor():
+    _agents["dave-0001"] = {
+        "name": "Dave", "role": "planner", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01",
+    }
+    _cursors["dave-0001"] = 5
+    _dispatch({"action": "unregister_agent", "agent_id": "dave-0001"})
+    assert "dave-0001" not in _cursors
+
+
+def test_unregister_emits_left_event():
+    _events.clear()
+    _agents["dave-0001"] = {
+        "name": "Dave", "role": "planner", "capabilities": [],
+        "channel_id": "test-channel", "registered_at": "2026-01-01",
+    }
+    _dispatch({"action": "unregister_agent", "agent_id": "dave-0001"})
+    assert any("Dave left" in e for e in _events)
+
+
+def test_unregister_unknown_agent_returns_error():
+    result = _dispatch({"action": "unregister_agent", "agent_id": "nobody-9999"})
+    assert result["ok"] is False
+    assert "Unknown agent" in result["error"]

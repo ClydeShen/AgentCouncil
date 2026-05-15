@@ -8,6 +8,7 @@ Run:
     python server.py --host 0.0.0.0 --port 8000
 """
 
+import logging
 import random
 import string
 import uuid
@@ -34,6 +35,17 @@ from a2a.types.a2a_pb2 import (
     Part,
     TaskState,
 )
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("agentcouncil")
 
 # ---------------------------------------------------------------------------
 # In-memory store
@@ -63,6 +75,7 @@ _cursors: dict[str, int] = {}
 
 def _emit(event: str) -> None:
     _events.append(event)
+    log.info("[EVENT] %s", event)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +184,16 @@ def poll_events(agent_id: str) -> dict:
     return _dispatch({"action": "poll_events", "agent_id": agent_id})
 
 
+@_mcp.tool
+def unregister_agent(agent_id: str) -> dict:
+    """Leave the channel and clean up this agent's presence.
+
+    Removes the agent from the registry, clears their inbox, and emits
+    a departure event to all channel members. Call this before ending a session.
+    """
+    return _dispatch({"action": "unregister_agent", "agent_id": agent_id})
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -195,6 +218,8 @@ def _dispatch(data: dict) -> dict | list:
             _inboxes.setdefault(agent_id, [])
             role_str = f" as {role}" if role else ""
             _emit(f"{data['name']} joined{role_str}")
+            log.info("[REGISTER] agent_id=%s name=%r role=%r channel=%s",
+                     agent_id, data["name"], role, data["channel_id"])
             return {"ok": True, "agent_id": agent_id, "channel_id": data["channel_id"]}
 
         case "list_agents":
@@ -208,6 +233,7 @@ def _dispatch(data: dict) -> dict | list:
         case "send_message":
             to = data["to_agent"]
             if to not in _agents:
+                log.warning("[DM] unknown recipient agent_id=%s from=%s", to, data["from_agent"])
                 return {"ok": False, "error": f"Unknown agent: {to}"}
             msg = {
                 "id": str(uuid.uuid4()),
@@ -216,12 +242,15 @@ def _dispatch(data: dict) -> dict | list:
                 "at": _now(),
             }
             _inboxes[to].append(msg)
+            log.info("[DM] from=%s to=%s msg_id=%s content=%r",
+                     data["from_agent"], to, msg["id"], data["content"][:120])
             return {"ok": True, "message_id": msg["id"]}
 
         case "read_inbox":
             agent_id = data["agent_id"]
             msgs = _inboxes.get(agent_id, [])
             _inboxes[agent_id] = []
+            log.info("[INBOX] agent_id=%s cleared %d message(s)", agent_id, len(msgs))
             return msgs
 
         case "create_conversation":
@@ -233,11 +262,15 @@ def _dispatch(data: dict) -> dict | list:
                 "messages": [],
                 "created_at": _now(),
             }
+            log.info("[CONV] created conv_id=%s name=%r channel=%s participants=%s",
+                     conv_id, data["name"], data["channel_id"], data.get("participants", []))
             return {"ok": True, "conversation_id": conv_id}
 
         case "post_to_conversation":
             conv = _conversations.get(data["conversation_id"])
             if not conv:
+                log.warning("[POST] conversation not found conv_id=%s from=%s",
+                            data["conversation_id"], data["from_agent"])
                 return {"ok": False, "error": "Conversation not found"}
             agent_name = _agents.get(data["from_agent"], {}).get("name", data["from_agent"])
             mentions = data.get("mentions", [])
@@ -251,17 +284,24 @@ def _dispatch(data: dict) -> dict | list:
             if mentions:
                 targets = ",".join(mentions)
                 _emit(f"{data['from_agent']}→{targets}: {data['content']}")
+                log.info("[POST] conv_id=%s from=%s mentions=%s content=%r",
+                         data["conversation_id"], data["from_agent"], mentions, data["content"][:120])
             else:
                 _emit(f"{agent_name}: {data['content']}")
+                log.info("[POST] conv_id=%s from=%s (broadcast) content=%r",
+                         data["conversation_id"], data["from_agent"], data["content"][:120])
             return {"ok": True, "total_messages": len(conv["messages"])}
 
         case "get_conversation":
             conv = _conversations.get(data["conversation_id"])
             if not conv:
+                log.warning("[GET_CONV] not found conv_id=%s", data["conversation_id"])
                 return {"ok": False, "error": "Conversation not found"}
             since = data.get("since", 0)
             result = dict(conv)
             result["messages"] = conv["messages"][since:]
+            log.info("[GET_CONV] conv_id=%s since=%d returning %d message(s)",
+                     data["conversation_id"], since, len(result["messages"]))
             return result
 
         case "poll_events":
@@ -280,6 +320,20 @@ def _dispatch(data: dict) -> dict | list:
                     visible.append(event)
             _cursors[agent_id] = cursor + len(new_events)
             return {"events": visible, "cursor": _cursors[agent_id]}
+
+        case "unregister_agent":
+            agent_id = data["agent_id"]
+            if agent_id not in _agents:
+                log.warning("[UNREGISTER] unknown agent_id=%s", agent_id)
+                return {"ok": False, "error": f"Unknown agent: {agent_id}"}
+            agent_name = _agents[agent_id]["name"]
+            channel_id = _agents[agent_id]["channel_id"]
+            del _agents[agent_id]
+            _inboxes.pop(agent_id, None)
+            _cursors.pop(agent_id, None)
+            _emit(f"{agent_name} left")
+            log.info("[UNREGISTER] agent_id=%s name=%r channel=%s", agent_id, agent_name, channel_id)
+            return {"ok": True, "agent_id": agent_id}
 
         case _:
             return {"ok": False, "error": f"Unknown action: {action!r}"}
@@ -322,6 +376,7 @@ class HubExecutor(AgentExecutor):
 
 SKILLS = [
     ("register_agent", "Register Agent", "Announce presence in a channel"),
+    ("unregister_agent", "Unregister Agent", "Leave a channel and clean up agent presence"),
     ("list_agents", "List Agents", "Discover agents in a channel"),
     ("send_message", "Send Message", "Direct message to an agent's inbox"),
     ("read_inbox", "Read Inbox", "Retrieve and clear pending messages"),

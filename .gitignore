@@ -37,7 +37,7 @@ htmlcov/
 *.log
 
 # memobank
-.memobank/meta/access-log.json
-.memobank/meta/code-index.db
-.memobank/.lancedb/
-.memobank/pending/
+.memobank/
+
+# Kiro IDE
+.kiro/
