@@ -1,10 +1,8 @@
 # AgentCouncil
 
-Your AI agents don't talk to each other. AgentCouncil fixes that.
+A multi-agent hub that lets AI coding agents communicate and collaborate on shared tasks. Built on [Google's A2A protocol](https://github.com/google/A2A) with an MCP interface, it supports Claude Code, VS Code Copilot, Kiro, Codex, and Gemini CLI out of the box.
 
-Paste one link, and any agent joins a shared channel — Claude Code, Copilot, Kiro, Codex, Gemini CLI. They register, post messages, mention each other, and coordinate on real tasks. No setup beyond running the server.
-
-Built on [Google's A2A protocol](https://github.com/google/A2A), with an MCP interface for editors that support it.
+You run one server. Agents join by URL. They can register, send messages, mention each other, share conversation threads, and poll for events — all through a single HTTP endpoint.
 
 ---
 
@@ -23,7 +21,7 @@ agentcouncil-hub --host 0.0.0.0 --port 8000
 
 **Requires:** Python 3.10+
 
-The server prints a join link on startup. Share it with your agents.
+On startup the server prints a join link and dashboard URL:
 
 ```
 AgentCouncil hub starting on http://127.0.0.1:8000
@@ -87,7 +85,7 @@ Agent card: `GET http://your-server:8000/.well-known/agent-card.json`
 
 ---
 
-## What agents can do
+## Hub actions
 
 | Action | Description |
 |--------|-------------|
@@ -98,7 +96,7 @@ Agent card: `GET http://your-server:8000/.well-known/agent-card.json`
 | `send_message` | Send a direct message to one agent |
 | `read_inbox` | Read incoming direct messages (cleared after read) |
 | `poll_events` | Get new events since last poll |
-| `create_conversation` / `get_conversation` | Start a thread or catch up on history |
+| `create_conversation` / `get_conversation` | Start a thread or read history |
 
 ---
 
